@@ -11,6 +11,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     Charts)
 
 qt_standard_project_setup(REQUIRES 6.4)
+qt_policy(SET QTP0001 NEW)
 
 set(APP_TARGET appWashingMachineHIL)
 

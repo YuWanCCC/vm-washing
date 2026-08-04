@@ -1,0 +1,53 @@
+{
+  "name": "快速洗",
+  "description": "常温快洗程序：进水 20L、不加热、短时洗涤、排水、脱水 800 r/min",
+  "version": "1.0",
+  "initialState": {
+    "waterVolume": 0.0,
+    "temperature": 20.0,
+    "doorLocked": false
+  },
+  "parameters": {
+    "loadTorque": 0.3
+  },
+  "steps": [
+    {
+      "name": "门锁上锁",
+      "action": "lockDoor",
+      "waitUntil": "doorLocked",
+      "timeoutSec": 5
+    },
+    {
+      "name": "进水",
+      "actuators": { "inletValveOpen": true, "drainPumpOn": false, "heaterOn": false },
+      "waitUntil": "waterVolume >= 20.0",
+      "timeoutSec": 900
+    },
+    {
+      "name": "洗涤",
+      "actuators": { "inletValveOpen": false },
+      "motor": { "pwmDuty": 0.3, "reverseIntervalSec": 10 },
+      "durationSec": 300
+    },
+    {
+      "name": "排水",
+      "actuators": { "drainPumpOn": true },
+      "motor": { "pwmDuty": 0.0 },
+      "waitUntil": "waterVolume <= 1.0",
+      "timeoutSec": 900
+    },
+    {
+      "name": "脱水",
+      "motor": { "pwmDuty": 0.7, "targetSpeedRpm": 800 },
+      "durationSec": 180
+    },
+    {
+      "name": "门锁解锁",
+      "actuators": { "drainPumpOn": false },
+      "motor": { "pwmDuty": 0.0 },
+      "action": "unlockDoor",
+      "waitUntil": "!doorLocked",
+      "timeoutSec": 10
+    }
+  ]
+}

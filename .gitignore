@@ -1,0 +1,29 @@
+# Build output
+build/
+out/
+output/
+
+# IDE / editor
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+
+# Compiled objects
+*.o
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+
+# Qt / CMake generated
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+*.qmltypes
+compile_commands.json
+
+# OS
+Thumbs.db
+.DS_Store

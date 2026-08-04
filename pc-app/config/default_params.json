@@ -1,0 +1,31 @@
+{
+  "waterLevel": {
+    "inletFlowRate": 2.0,
+    "drainFlowRate": 1.5,
+    "maxCapacity": 50.0,
+    "crossSectionArea": 0.1
+  },
+  "temperature": {
+    "heaterPower": 2000,
+    "specificHeat": 4186,
+    "heatLossCoefficient": 5.0,
+    "environmentTemp": 25.0,
+    "ntcR25": 10000,
+    "ntcBValue": 3950
+  },
+  "motor": {
+    "inertia": 0.01,
+    "frictionCoefficient": 0.005,
+    "torqueConstant": 2.0,
+    "polePairs": 4,
+    "maxSpeedRpm": 1600
+  },
+  "doorLock": {
+    "lockDelay": 1.5,
+    "unlockDelay": 1.0
+  },
+  "simulation": {
+    "timeStepMs": 20,
+    "timeScale": 1.0
+  }
+}

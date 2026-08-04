@@ -1,0 +1,74 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "mingw-base",
+      "hidden": true,
+      "description": "Qt MinGW 工具链公共配置。换 Qt / MinGW 版本时只需改本节的三个路径。",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "D:/Qt/6.5.3/mingw_64",
+        "CMAKE_CXX_COMPILER": "D:/Qt/Tools/mingw1120_64/bin/g++.exe",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "HIL_BUILD_TESTS": "ON"
+      },
+      "environment": {
+        "PATH": "D:/Qt/6.5.3/mingw_64/bin;D:/Qt/Tools/mingw1120_64/bin;D:/Qt/Tools/Ninja;$penv{PATH}"
+      }
+    },
+    {
+      "name": "mingw-debug",
+      "displayName": "MinGW Debug",
+      "description": "带调试符号，用于日常开发与断点调试",
+      "inherits": "mingw-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "mingw-release",
+      "displayName": "MinGW Release",
+      "description": "优化构建，用于现场部署与性能验证",
+      "inherits": "mingw-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "mingw-debug",
+      "displayName": "MinGW Debug",
+      "configurePreset": "mingw-debug"
+    },
+    {
+      "name": "mingw-release",
+      "displayName": "MinGW Release",
+      "configurePreset": "mingw-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "mingw-debug",
+      "displayName": "MinGW Debug",
+      "configurePreset": "mingw-debug",
+      "environment": {
+        "PATH": "D:/Qt/6.5.3/mingw_64/bin;D:/Qt/Tools/mingw1120_64/bin;$penv{PATH}"
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

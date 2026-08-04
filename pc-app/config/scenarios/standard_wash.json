@@ -1,0 +1,59 @@
+{
+  "name": "标准洗涤",
+  "description": "40℃ 标准程序：进水 30L、加热至 40℃、洗涤正反转、排水、脱水 1200 r/min",
+  "version": "1.0",
+  "initialState": {
+    "waterVolume": 0.0,
+    "temperature": 20.0,
+    "doorLocked": false
+  },
+  "parameters": {
+    "loadTorque": 0.6
+  },
+  "steps": [
+    {
+      "name": "门锁上锁",
+      "action": "lockDoor",
+      "waitUntil": "doorLocked",
+      "timeoutSec": 5
+    },
+    {
+      "name": "进水",
+      "actuators": { "inletValveOpen": true, "drainPumpOn": false, "heaterOn": false },
+      "waitUntil": "waterVolume >= 30.0",
+      "timeoutSec": 1200
+    },
+    {
+      "name": "加热",
+      "actuators": { "inletValveOpen": false, "heaterOn": true },
+      "waitUntil": "temperature >= 40.0",
+      "timeoutSec": 1800
+    },
+    {
+      "name": "洗涤",
+      "actuators": { "heaterOn": false },
+      "motor": { "pwmDuty": 0.35, "reverseIntervalSec": 15 },
+      "durationSec": 900
+    },
+    {
+      "name": "排水",
+      "actuators": { "drainPumpOn": true },
+      "motor": { "pwmDuty": 0.0 },
+      "waitUntil": "waterVolume <= 1.0",
+      "timeoutSec": 1200
+    },
+    {
+      "name": "脱水",
+      "motor": { "pwmDuty": 0.85, "targetSpeedRpm": 1200 },
+      "durationSec": 300
+    },
+    {
+      "name": "门锁解锁",
+      "actuators": { "drainPumpOn": false },
+      "motor": { "pwmDuty": 0.0 },
+      "action": "unlockDoor",
+      "waitUntil": "!doorLocked",
+      "timeoutSec": 10
+    }
+  ]
+}

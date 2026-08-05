@@ -4,7 +4,6 @@ out/
 output/
 
 # IDE / editor
-.vscode/
 *.user
 *.suo
 *.sln.docstates

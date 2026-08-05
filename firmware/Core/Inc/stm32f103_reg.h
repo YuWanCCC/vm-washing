@@ -1,7 +1,11 @@
 /**
   ******************************************************************************
   * @file    stm32f103_reg.h
-  * @brief   STM32F103 轻量级寄存器定义(替代 CMSIS/HAL)
+  * @brief   STM32F103ZET6 轻量级寄存器定义(替代 CMSIS/HAL)
+  *
+  * 目标器件: STM32F103ZET6, 144 脚大容量(High-density)型号,
+  *           512K FLASH / 64K RAM, 含 GPIOA-GPIOG、ADC1-3、TIM1-8、
+  *           USART1-3 + UART4/5、DMA1/DMA2、双通道 DAC。
   *
   * 本工程不依赖 ST 官方 HAL 库, 仅通过本文件提供的寄存器映射直接操作外设。
   * 结构体成员顺序严格按照 RM0008 参考手册的寄存器偏移排列, 不可随意增删。
@@ -207,14 +211,28 @@ typedef struct {
 #define GPIOB_BASE_ADDR   0x40010C00UL
 #define GPIOC_BASE_ADDR   0x40011000UL
 #define GPIOD_BASE_ADDR   0x40011400UL
+#define GPIOE_BASE_ADDR   0x40011800UL
+#define GPIOF_BASE_ADDR   0x40011C00UL   /*!< 大容量器件(144 脚)才有  */
+#define GPIOG_BASE_ADDR   0x40012000UL   /*!< 大容量器件(144 脚)才有  */
 #define ADC1_BASE_ADDR    0x40012400UL
+#define ADC2_BASE_ADDR    0x40012800UL
+#define ADC3_BASE_ADDR    0x40013C00UL   /*!< 大容量器件专有          */
 #define TIM1_BASE_ADDR    0x40012C00UL
+#define TIM8_BASE_ADDR    0x40013400UL   /*!< 大容量器件专有          */
 #define USART1_BASE_ADDR  0x40013800UL
 #define TIM2_BASE_ADDR    0x40000000UL
 #define TIM3_BASE_ADDR    0x40000400UL
 #define TIM4_BASE_ADDR    0x40000800UL
+#define TIM5_BASE_ADDR    0x40000C00UL   /*!< 大容量器件专有          */
+#define TIM6_BASE_ADDR    0x40001000UL   /*!< 大容量器件专有          */
+#define TIM7_BASE_ADDR    0x40001400UL   /*!< 大容量器件专有          */
+#define USART2_BASE_ADDR  0x40004400UL
+#define USART3_BASE_ADDR  0x40004800UL
+#define UART4_BASE_ADDR   0x40004C00UL   /*!< 大容量器件专有          */
+#define UART5_BASE_ADDR   0x40005000UL   /*!< 大容量器件专有          */
 #define DAC_BASE_ADDR     0x40007400UL
 #define DMA1_BASE_ADDR    0x40020000UL
+#define DMA2_BASE_ADDR    0x40020400UL   /*!< 大容量器件专有          */
 
 #define FLASH_R           ((FLASH_TypeDef *)FLASH_BASE_ADDR)
 #define RCC               ((RCC_TypeDef   *)RCC_BASE_ADDR)
@@ -223,20 +241,37 @@ typedef struct {
 #define GPIOB             ((GPIO_TypeDef  *)GPIOB_BASE_ADDR)
 #define GPIOC             ((GPIO_TypeDef  *)GPIOC_BASE_ADDR)
 #define GPIOD             ((GPIO_TypeDef  *)GPIOD_BASE_ADDR)
+#define GPIOE             ((GPIO_TypeDef  *)GPIOE_BASE_ADDR)
+#define GPIOF             ((GPIO_TypeDef  *)GPIOF_BASE_ADDR)
+#define GPIOG             ((GPIO_TypeDef  *)GPIOG_BASE_ADDR)
 #define ADC1              ((ADC_TypeDef   *)ADC1_BASE_ADDR)
+#define ADC2              ((ADC_TypeDef   *)ADC2_BASE_ADDR)
+#define ADC3              ((ADC_TypeDef   *)ADC3_BASE_ADDR)
 #define TIM1              ((TIM_TypeDef   *)TIM1_BASE_ADDR)
 #define TIM2              ((TIM_TypeDef   *)TIM2_BASE_ADDR)
 #define TIM3              ((TIM_TypeDef   *)TIM3_BASE_ADDR)
 #define TIM4              ((TIM_TypeDef   *)TIM4_BASE_ADDR)
+#define TIM5              ((TIM_TypeDef   *)TIM5_BASE_ADDR)
+#define TIM6              ((TIM_TypeDef   *)TIM6_BASE_ADDR)
+#define TIM7              ((TIM_TypeDef   *)TIM7_BASE_ADDR)
+#define TIM8              ((TIM_TypeDef   *)TIM8_BASE_ADDR)
 #define USART1            ((USART_TypeDef *)USART1_BASE_ADDR)
+#define USART2            ((USART_TypeDef *)USART2_BASE_ADDR)
+#define USART3            ((USART_TypeDef *)USART3_BASE_ADDR)
+#define UART4             ((USART_TypeDef *)UART4_BASE_ADDR)
+#define UART5             ((USART_TypeDef *)UART5_BASE_ADDR)
 #define DAC               ((DAC_TypeDef   *)DAC_BASE_ADDR)
 #define DMA1              ((DMA_TypeDef   *)DMA1_BASE_ADDR)
+#define DMA2              ((DMA_TypeDef   *)DMA2_BASE_ADDR)
 
 /* DMA1 通道 1-7, 通道 1 起始偏移 0x08, 步长 0x14 */
 #define DMA1_CHANNEL(n)   ((DMA_Channel_TypeDef *)(DMA1_BASE_ADDR + 0x08UL + 0x14UL * ((n) - 1U)))
 #define DMA1_CH1          DMA1_CHANNEL(1)
 #define DMA1_CH4          DMA1_CHANNEL(4)
 #define DMA1_CH5          DMA1_CHANNEL(5)
+
+/* DMA2 通道 1-5(大容量器件), 偏移规则与 DMA1 相同 */
+#define DMA2_CHANNEL(n)   ((DMA_Channel_TypeDef *)(DMA2_BASE_ADDR + 0x08UL + 0x14UL * ((n) - 1U)))
 
 #define SYSTICK           ((SysTick_TypeDef *)0xE000E010UL)
 #define NVIC              ((NVIC_TypeDef    *)0xE000E100UL)
@@ -271,16 +306,32 @@ typedef struct {
 #define RCC_APB2ENR_IOPAEN      (1UL << 2)
 #define RCC_APB2ENR_IOPBEN      (1UL << 3)
 #define RCC_APB2ENR_IOPCEN      (1UL << 4)
+#define RCC_APB2ENR_IOPDEN      (1UL << 5)
+#define RCC_APB2ENR_IOPEEN      (1UL << 6)
+#define RCC_APB2ENR_IOPFEN      (1UL << 7)
+#define RCC_APB2ENR_IOPGEN      (1UL << 8)
 #define RCC_APB2ENR_ADC1EN      (1UL << 9)
+#define RCC_APB2ENR_ADC2EN      (1UL << 10)
 #define RCC_APB2ENR_TIM1EN      (1UL << 11)
+#define RCC_APB2ENR_SPI1EN      (1UL << 12)
+#define RCC_APB2ENR_TIM8EN      (1UL << 13)
 #define RCC_APB2ENR_USART1EN    (1UL << 14)
+#define RCC_APB2ENR_ADC3EN      (1UL << 15)
 
 #define RCC_APB1ENR_TIM2EN      (1UL << 0)
 #define RCC_APB1ENR_TIM3EN      (1UL << 1)
 #define RCC_APB1ENR_TIM4EN      (1UL << 2)
+#define RCC_APB1ENR_TIM5EN      (1UL << 3)
+#define RCC_APB1ENR_TIM6EN      (1UL << 4)
+#define RCC_APB1ENR_TIM7EN      (1UL << 5)
+#define RCC_APB1ENR_USART2EN    (1UL << 17)
+#define RCC_APB1ENR_USART3EN    (1UL << 18)
+#define RCC_APB1ENR_UART4EN     (1UL << 19)
+#define RCC_APB1ENR_UART5EN     (1UL << 20)
 #define RCC_APB1ENR_DACEN       (1UL << 29)
 
 #define RCC_AHBENR_DMA1EN       (1UL << 0)
+#define RCC_AHBENR_DMA2EN       (1UL << 1)
 
 #define RCC_APB2RSTR_ADC1RST    (1UL << 9)
 
@@ -374,13 +425,27 @@ typedef struct {
 /* ========================================================================== */
 
 typedef enum {
-    DMA1_Channel1_IRQn = 11,
-    DMA1_Channel4_IRQn = 14,
-    DMA1_Channel5_IRQn = 15,
-    ADC1_2_IRQn        = 18,
-    TIM2_IRQn          = 28,
-    TIM3_IRQn          = 29,
-    USART1_IRQn        = 37
+    DMA1_Channel1_IRQn     = 11,
+    DMA1_Channel4_IRQn     = 14,
+    DMA1_Channel5_IRQn     = 15,
+    ADC1_2_IRQn            = 18,
+    TIM2_IRQn              = 28,
+    TIM3_IRQn              = 29,
+    TIM4_IRQn              = 30,
+    USART1_IRQn            = 37,
+    USART2_IRQn            = 38,
+    USART3_IRQn            = 39,
+    /* --- 以下为大容量器件专有中断 --- */
+    ADC3_IRQn              = 47,
+    TIM5_IRQn              = 50,
+    UART4_IRQn             = 52,
+    UART5_IRQn             = 53,
+    TIM6_IRQn              = 54,
+    TIM7_IRQn              = 55,
+    DMA2_Channel1_IRQn     = 56,
+    DMA2_Channel2_IRQn     = 57,
+    DMA2_Channel3_IRQn     = 58,
+    DMA2_Channel4_5_IRQn   = 59
 } IRQn_Type;
 
 /* ========================================================================== */

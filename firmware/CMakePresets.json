@@ -1,0 +1,60 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "fw-base",
+      "hidden": true,
+      "description": "STM32F103ZET6 (德飞莱尼莫 M3S) 交叉编译公共配置。换工具链时只改本节路径。",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "TOOLCHAIN_PREFIX": "D:/arm-gnu-toolchain-14.3.rel1-mingw-w64-i686-arm-none-eabi/arm-gnu-toolchain-14.3.rel1-mingw-w64-i686-arm-none-eabi/bin/arm-none-eabi-",
+        "CMAKE_MAKE_PROGRAM": "D:/Qt/Tools/Ninja/ninja.exe",
+        "OPENOCD": "D:/openocd-20260302/OpenOCD-20260302-0.12.0/bin/openocd.exe"
+      },
+      "environment": {
+        "PATH": "D:/arm-gnu-toolchain-14.3.rel1-mingw-w64-i686-arm-none-eabi/arm-gnu-toolchain-14.3.rel1-mingw-w64-i686-arm-none-eabi/bin;D:/Qt/Tools/Ninja;$penv{PATH}"
+      }
+    },
+    {
+      "name": "fw-release",
+      "displayName": "Firmware Release",
+      "description": "-O2 优化, 用于烧写实机",
+      "inherits": "fw-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "fw-debug",
+      "displayName": "Firmware Debug",
+      "description": "-Og -g3, 用于 SWD 在线调试",
+      "inherits": "fw-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "fw-release",
+      "displayName": "Firmware Release",
+      "configurePreset": "fw-release"
+    },
+    {
+      "name": "fw-debug",
+      "displayName": "Firmware Debug",
+      "configurePreset": "fw-debug"
+    }
+  ]
+}

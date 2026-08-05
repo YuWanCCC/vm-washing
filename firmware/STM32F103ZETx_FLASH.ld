@@ -1,11 +1,11 @@
 /**
   ******************************************************************************
-  * @file      STM32F103C8Tx_FLASH.ld
-  * @brief     STM32F103C8 链接脚本
+  * @file      STM32F103ZETx_FLASH.ld
+  * @brief     STM32F103ZET6 链接脚本(大容量器件)
   *
   * 存储器布局:
-  *   FLASH  64K @ 0x08000000
-  *   RAM    20K @ 0x20000000
+  *   FLASH  512K @ 0x08000000
+  *   RAM     64K @ 0x20000000
   *
   * 栈从 RAM 末尾向下增长, 堆(未使用 malloc 时为 0) 紧跟 .bss 之后。
   ******************************************************************************
@@ -13,17 +13,17 @@
 
 ENTRY(Reset_Handler)
 
-/* RAM 末尾作为初始栈顶 */
-_estack = 0x20005000;
+/* RAM 末尾作为初始栈顶 (0x20000000 + 64K) */
+_estack = 0x20010000;
 
 /* 最小堆栈空间, 链接期检查 RAM 是否够用 */
-_Min_Heap_Size = 0x200;    /* 512 字节 */
-_Min_Stack_Size = 0x400;   /* 1K 字节  */
+_Min_Heap_Size = 0x400;    /* 1K 字节 */
+_Min_Stack_Size = 0x1000;  /* 4K 字节 */
 
 MEMORY
 {
-  FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 64K
-  RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 20K
+  FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 512K
+  RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 64K
 }
 
 SECTIONS

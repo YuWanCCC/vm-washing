@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
-  * @file      startup_stm32f103c8tx.s
-  * @brief     STM32F103C8 启动文件(精简版, GNU AS 语法)
+  * @file      startup_stm32f103zetx.s
+  * @brief     STM32F103ZET6 启动文件(精简版, GNU AS 语法)
   *
   * 上电流程:
   *   1. 设置栈指针(由链接脚本给出的 _estack)
@@ -10,6 +10,7 @@
   *   4. 调用 SystemInit() 复位时钟系统
   *   5. 跳转 main(), 返回则死循环
   *
+  * 向量表按大容量器件(High-density, 60 个 IRQ)排列, 不可裁剪中间条目。
   * 未使用 C 库初始化(__libc_init_array), 本工程为纯 C 且无静态构造需求。
   ******************************************************************************
   */
@@ -87,7 +88,7 @@ Infinite_Loop:
   .size  Default_Handler, .-Default_Handler
 
 /******************************************************************************
-* 中断向量表
+* 中断向量表(大容量器件 STM32F103xE)
 ******************************************************************************/
   .section  .isr_vector,"a",%progbits
   .type  g_pfnVectors, %object
@@ -154,6 +155,23 @@ g_pfnVectors:
   .word  EXTI15_10_IRQHandler         /* IRQ40 EXTI15-10           */
   .word  RTC_Alarm_IRQHandler         /* IRQ41 RTC 闹钟            */
   .word  USBWakeUp_IRQHandler         /* IRQ42 USB 唤醒            */
+  .word  TIM8_BRK_IRQHandler          /* IRQ43 TIM8 刹车           */
+  .word  TIM8_UP_IRQHandler           /* IRQ44 TIM8 更新           */
+  .word  TIM8_TRG_COM_IRQHandler      /* IRQ45 TIM8 触发           */
+  .word  TIM8_CC_IRQHandler           /* IRQ46 TIM8 捕获比较       */
+  .word  ADC3_IRQHandler              /* IRQ47 ADC3                */
+  .word  FSMC_IRQHandler              /* IRQ48 FSMC                */
+  .word  SDIO_IRQHandler              /* IRQ49 SDIO                */
+  .word  TIM5_IRQHandler              /* IRQ50 TIM5                */
+  .word  SPI3_IRQHandler              /* IRQ51 SPI3                */
+  .word  UART4_IRQHandler             /* IRQ52 UART4               */
+  .word  UART5_IRQHandler             /* IRQ53 UART5               */
+  .word  TIM6_IRQHandler              /* IRQ54 TIM6                */
+  .word  TIM7_IRQHandler              /* IRQ55 TIM7                */
+  .word  DMA2_Channel1_IRQHandler     /* IRQ56 DMA2 通道1          */
+  .word  DMA2_Channel2_IRQHandler     /* IRQ57 DMA2 通道2          */
+  .word  DMA2_Channel3_IRQHandler     /* IRQ58 DMA2 通道3          */
+  .word  DMA2_Channel4_5_IRQHandler   /* IRQ59 DMA2 通道4/5        */
 
 /******************************************************************************
 * 弱符号定义: 未在 C 代码中实现的中断都指向 Default_Handler
@@ -314,3 +332,54 @@ g_pfnVectors:
 
   .weak  USBWakeUp_IRQHandler
   .thumb_set USBWakeUp_IRQHandler,Default_Handler
+
+  .weak  TIM8_BRK_IRQHandler
+  .thumb_set TIM8_BRK_IRQHandler,Default_Handler
+
+  .weak  TIM8_UP_IRQHandler
+  .thumb_set TIM8_UP_IRQHandler,Default_Handler
+
+  .weak  TIM8_TRG_COM_IRQHandler
+  .thumb_set TIM8_TRG_COM_IRQHandler,Default_Handler
+
+  .weak  TIM8_CC_IRQHandler
+  .thumb_set TIM8_CC_IRQHandler,Default_Handler
+
+  .weak  ADC3_IRQHandler
+  .thumb_set ADC3_IRQHandler,Default_Handler
+
+  .weak  FSMC_IRQHandler
+  .thumb_set FSMC_IRQHandler,Default_Handler
+
+  .weak  SDIO_IRQHandler
+  .thumb_set SDIO_IRQHandler,Default_Handler
+
+  .weak  TIM5_IRQHandler
+  .thumb_set TIM5_IRQHandler,Default_Handler
+
+  .weak  SPI3_IRQHandler
+  .thumb_set SPI3_IRQHandler,Default_Handler
+
+  .weak  UART4_IRQHandler
+  .thumb_set UART4_IRQHandler,Default_Handler
+
+  .weak  UART5_IRQHandler
+  .thumb_set UART5_IRQHandler,Default_Handler
+
+  .weak  TIM6_IRQHandler
+  .thumb_set TIM6_IRQHandler,Default_Handler
+
+  .weak  TIM7_IRQHandler
+  .thumb_set TIM7_IRQHandler,Default_Handler
+
+  .weak  DMA2_Channel1_IRQHandler
+  .thumb_set DMA2_Channel1_IRQHandler,Default_Handler
+
+  .weak  DMA2_Channel2_IRQHandler
+  .thumb_set DMA2_Channel2_IRQHandler,Default_Handler
+
+  .weak  DMA2_Channel3_IRQHandler
+  .thumb_set DMA2_Channel3_IRQHandler,Default_Handler
+
+  .weak  DMA2_Channel4_5_IRQHandler
+  .thumb_set DMA2_Channel4_5_IRQHandler,Default_Handler

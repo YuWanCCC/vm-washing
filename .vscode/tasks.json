@@ -1,0 +1,124 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "配置 (Debug)",
+      "type": "process",
+      "command": "${config:cmake.cmakePath}",
+      "args": ["--preset", "mingw-debug"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "构建 (Debug)",
+      "type": "process",
+      "command": "${config:cmake.cmakePath}",
+      "args": ["--build", "--preset", "mingw-debug"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "构建 (Release)",
+      "type": "process",
+      "command": "${config:cmake.cmakePath}",
+      "args": ["--build", "--preset", "mingw-release"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "运行单元测试",
+      "type": "process",
+      "command": "${config:cmake.ctestPath}",
+      "args": ["--preset", "mingw-debug"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "构建 (Debug)",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "打包 (windeployqt)",
+      "type": "process",
+      "command": "D:/Qt/6.5.3/mingw_64/bin/windeployqt.exe",
+      "args": [
+        "--qmldir",
+        "${workspaceFolder}/pc-app/src/ui/qml",
+        "${workspaceFolder}/build/mingw-release/pc-app/appWashingMachineHIL.exe"
+      ],
+      "dependsOn": "构建 (Release)",
+      "problemMatcher": []
+    },
+    {
+      "label": "固件: 配置 (Release)",
+      "detail": "STM32F103ZET6 交叉编译, 路径定义在 firmware/CMakePresets.json",
+      "type": "process",
+      "command": "${config:cmake.cmakePath}",
+      "args": ["--preset", "fw-release"],
+      "options": { "cwd": "${workspaceFolder}/firmware" },
+      "problemMatcher": []
+    },
+    {
+      "label": "固件: 构建 (Release)",
+      "detail": "产物 build/fw-release/washer_hil_fw.elf/.hex/.bin, 并打印 FLASH/RAM 占用",
+      "type": "process",
+      "command": "${config:cmake.cmakePath}",
+      "args": ["--build", "--preset", "fw-release", "-j"],
+      "options": { "cwd": "${workspaceFolder}/firmware" },
+      "dependsOn": "固件: 配置 (Release)",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "固件: 配置 (Debug)",
+      "detail": "-Og -g3 -gdwarf-2, 供 SWD 在线调试用",
+      "type": "process",
+      "command": "${config:cmake.cmakePath}",
+      "args": ["--preset", "fw-debug"],
+      "options": { "cwd": "${workspaceFolder}/firmware" },
+      "problemMatcher": []
+    },
+    {
+      "label": "固件: 构建 (Debug)",
+      "detail": "产物 build/fw-debug/washer_hil_fw.elf, 被 launch.json 的 OpenOCD 调试配置引用",
+      "type": "process",
+      "command": "${config:cmake.cmakePath}",
+      "args": ["--build", "--preset", "fw-debug", "-j"],
+      "options": { "cwd": "${workspaceFolder}/firmware" },
+      "dependsOn": "固件: 配置 (Debug)",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "固件: 烧写 (OpenOCD + ST-Link SWD)",
+      "detail": "兼容较老的 ST-Link 固件; 路径取自 settings.json 的 cortex-debug.openocdPath",
+      "type": "process",
+      "command": "${config:cortex-debug.openocdPath}",
+      "args": [
+        "-f",
+        "interface/stlink.cfg",
+        "-f",
+        "target/stm32f1x.cfg",
+        "-c",
+        "program ${workspaceFolder}/build/fw-release/washer_hil_fw.elf verify reset exit"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "固件: 构建 (Release)",
+      "problemMatcher": []
+    },
+    {
+      "label": "固件: 烧写 (STM32CubeProgrammer + ST-Link SWD)",
+      "detail": "要求 ST-Link 固件已升级; CLI 目录取自 cortex-debug.stm32cubeprogrammer",
+      "type": "process",
+      "command": "${config:cortex-debug.stm32cubeprogrammer}/STM32_Programmer_CLI.exe",
+      "args": [
+        "-c",
+        "port=SWD",
+        "-w",
+        "${workspaceFolder}/build/fw-release/washer_hil_fw.elf",
+        "-v",
+        "-rst"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "固件: 构建 (Release)",
+      "problemMatcher": []
+    }
+  ]
+}

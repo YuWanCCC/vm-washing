@@ -1,0 +1,94 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "调试上位机 (appWashingMachineHIL)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/mingw-debug/pc-app/appWashingMachineHIL.exe",
+      "cwd": "${workspaceFolder}/build/mingw-debug/pc-app",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "D:/Qt/Tools/mingw1120_64/bin/gdb.exe",
+      "preLaunchTask": "构建 (Debug)",
+      "environment": [
+        {
+          "name": "PATH",
+          "value": "D:/Qt/6.5.3/mingw_64/bin;D:/Qt/Tools/mingw1120_64/bin;${env:PATH}"
+        },
+        {
+          "name": "QT_ASSUME_STDERR_HAS_CONSOLE",
+          "value": "1"
+        },
+        {
+          "name": "QT_LOGGING_RULES",
+          "value": "qt.qml.connections.warning=false"
+        }
+      ],
+      "setupCommands": [
+        {
+          "description": "启用 gdb 漂亮打印（QString/QVariantMap 等可读化）",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "忽略 Qt 内部信号，避免误停",
+          "text": "handle SIGPIPE nostop noprint pass",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "调试物理模型单元测试 (tst_physicsmodels)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/mingw-debug/pc-app/tst_physicsmodels.exe",
+      "cwd": "${workspaceFolder}/build/mingw-debug/pc-app",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "MIMode": "gdb",
+      "miDebuggerPath": "D:/Qt/Tools/mingw1120_64/bin/gdb.exe",
+      "preLaunchTask": "构建 (Debug)",
+      "environment": [
+        {
+          "name": "PATH",
+          "value": "D:/Qt/6.5.3/mingw_64/bin;D:/Qt/Tools/mingw1120_64/bin;${env:PATH}"
+        }
+      ],
+      "setupCommands": [
+        {
+          "description": "启用 gdb 漂亮打印",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "调试固件 (OpenOCD + ST-Link SWD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/fw-debug/washer_hil_fw.elf",
+      "device": "STM32F103ZE",
+      "configFiles": ["interface/stlink-hla.cfg", "target/stm32f1x.cfg"],
+      "svdFile": "D:/ST/STM32CubeCLT_1.22.0/STMicroelectronics_CMSIS_SVD/STM32F103.svd",
+      "preLaunchTask": "固件: 构建 (Debug)",
+      "runToEntryPoint": "main"
+    },
+    {
+      "name": "挂载到运行中的固件 (不复位)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/fw-debug/washer_hil_fw.elf",
+      "device": "STM32F103ZE",
+      "configFiles": ["interface/stlink.cfg", "target/stm32f1x.cfg"],
+      "svdFile": "D:/ST/STM32CubeCLT_1.22.0/STMicroelectronics_CMSIS_SVD/STM32F103.svd"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QUrl>
 #include <QtQml/qqml.h>
 
 #include "communication/SerialManager.h"
@@ -82,6 +84,15 @@ int main(int argc, char *argv[])
     registerFaultTypes();
 
     QQmlApplicationEngine engine;
+
+    // 可执行文件所在目录的 file:// URL（带尾部斜杠，便于 QML 侧直接拼接相对路径）。
+    // Quick3D 的 RuntimeLoader 需要真实文件路径，无法读取 qrc 资源，因此 GLB 等
+    // 随程序发布的模型资产只能通过该前缀定位。
+    engine.rootContext()->setContextProperty(
+        QStringLiteral("appDirUrl"),
+        QUrl::fromLocalFile(QCoreApplication::applicationDirPath()
+                            + QLatin1Char('/')).toString());
+
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
                      &app, []() { QCoreApplication::exit(-1); },
                      Qt::QueuedConnection);

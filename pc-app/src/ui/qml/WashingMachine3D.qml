@@ -1,9 +1,25 @@
 import QtQuick
 import QtQuick3D
+import QtQuick3D.AssetUtils
 import HIL.Models 1.0
 
 /*!
     洗衣机 3D 可视化视图（Qt Quick 3D）。
+
+    模型来源
+    --------
+    两套方案并存，由 useExternalModel 切换（界面右上角按钮）：
+      - 外部 GLB：RuntimeLoader 加载可执行目录下的 models/washing-machine.glb（由 CMake
+        拷过去）。该类不支持 qrc，只能读真实文件，路径由 appDirUrl 拼出。GLB 的
+        单位、原点、up 轴与材质都不能假定：按 bounds 自动等比缩放到与机身等高并
+        对齐地面中心，Z-up 模型由 externalZUp 绕 X 轴 -90° 转正，整体朝向再由
+        externalYaw 按 90° 步进修正；若文件不带材质，加载完成后遍历子 Model 统一
+        赋上漆面材质，并在包围盒表面叠加一组贴纸。若模型里门体是独立节点
+        （名字含 externalDoorNodeHint），加载后会被定位出来，按 externalDoorHinge /
+        externalDoorAxis 摆动，于是与内置模型一样支持手动/自动开合；找不到则
+        退化为不可动并在按钮上标出
+      - 程序化模型：下方由内置图元拼装，与物理量联动（水位/转速/指示灯/显示屏）
+    程序化模型的完整实现全部保留，切回后联动照常工作。
 
     坐标与尺寸约定
     --------------
@@ -30,10 +46,14 @@ import HIL.Models 1.0
       - 正面板四块围出开口，再由圆环段修饰成圆形门洞
       - 门洞内黑色橡胶密封套筒，后方是不锈钢滚筒（提升筋 + 排水孔）
       - 滚筒内水位随 waterModel.waterLevel 变化
-      - 舱门常闭（门锁模型不含开合语义），滚筒随 motorModel.speedRpm 旋转
+      - 舱门（含玻璃观察窗）可绕左侧铰链开合，右上角按钮在手动/自动间切换；
+        自动模式跟随门锁（解锁即开、上锁即合），两种模式下门锁闩住时都强制合门
+      - 滚筒随 motorModel.speedRpm 旋转
       - 顶部凸出控制面板（显示屏 / 旋钮 / 四枚指示灯）+ 洗涤剂抽屉
 
     视角：左键拖拽环绕 / 滚轮或右键拖拽缩放 / 双击复位。
+    初始与复位的进退不写死，由 fitDistanceFor() 根据机身尺寸、复位角度与当前
+    视口宽高比算出，因此换模型、改窗口大小都不需要重新调参。
 */
 Item {
     id: root
@@ -47,10 +67,73 @@ Item {
         ? Math.max(0, Math.min(1, engine.waterModel.waterLevel / fullLevelMm)) : 0
     readonly property real speedRpm: engine ? engine.motorModel.speedRpm : 0
 
+    //! 模型来源：true 加载外部 GLB，false 使用下方代码生成的程序化模型
+    property bool useExternalModel: true
+    //! 外部模型绕竖轴的朝向修正（GLB 正面朝向不确定时按 90° 步进调整）。
+    //! 当前模型实测正面朝向与相机相反，需横向转 180° 才能把机门朝向观察者。
+    property real externalYaw: 180
+    //! 外部模型是否为 Z-up（Blender 默认导出为 Z-up，需绕 X 轴 -90° 转成 Y-up，
+    //! 否则模型会躺倒）。当前模型实测包围盒 600×625×840，最大维度在 Z 上，故为真。
+    property bool externalZUp: true
+    //! 贴纸组的换面偏移（按 90° 步进换到另一个面）
+    property real stickerFaceOffset: 0
+    //! 贴纸组绕模型竖轴的最终角度。贴纸组是 externalMachine 的子节点，会跟着
+    //! externalYaw 一起转，所以先减去整体朝向作补偿（使贴纸总是留在朝向观察者
+    //! 的正面），再叠上手动换面偏移。
+    readonly property real stickerYaw: root.stickerFaceOffset - root.externalYaw
+    //! 是否在外部模型上叠加贴纸
+    property bool showExternalStickers: true
+    //! 外部模型文件 URL。RuntimeLoader 内部经 QUrl::toLocalFile() 交由 assimp 读取，
+    //! 不支持 qrc 资源，故拼接 main.cpp 注入的可执行目录前缀（CMake 已把 GLB
+    //! 拷到该目录下的 models/）。
+    readonly property url externalModelSource:
+        appDirUrl + "models/washing-machine.glb"
+
+    //! GLB 门体节点名关键字（不区分大小写的子串匹配，空串=不查找）。RuntimeLoader
+    //! 会把 glTF 节点名写进 objectName，因此可按名字定位。前提是门体在模型里是
+    //! 独立的 node；当前默认模型整台机器融成一个网格，找不到就退化为不可动。
+    property string externalDoorNodeHint: "door"
+    //! 铰链位置，写在门体节点自身的局部坐标系里、用 GLB 的原始单位。赋给
+    //! Node.pivot 作为旋转中心；留零则绕门体节点自己的原点转。
+    property vector3d externalDoorHinge: Qt.vector3d(0, 0, 0)
+    //! 门体摆动轴。门体节点位于 up 轴修正层之内，局部轴仍是 GLB 的原始轴向，
+    //! 所以 Z-up 模型的竖轴是 z。空串表示按 externalZUp 自动取竖轴。
+    property string externalDoorAxis: ""
+    //! 开门角。符号决定往哪边摆，装上真模型后若开反了取负即可。
+    property real externalDoorOpenMax: 105
+
+    readonly property string doorAxisEffective: root.externalDoorAxis.length > 0
+        ? root.externalDoorAxis : (root.externalZUp ? "z" : "y")
+    //! 当前模型来源下门体能否摆动（GLB 需成功定位到独立门体节点）
+    readonly property bool doorAnimatable: root.useExternalModel
+        ? externalMachine.doorNode !== null : true
+
+    //! 舱门开合是否由仿真状态自动驱动（自动：解锁即开、上锁即合）
+    property bool doorAuto: false
+    //! 手动模式下的开门请求
+    property bool doorOpenRequest: false
+    //! 门体是否被闩住。上锁与两个过渡态都算闩住——过渡期间锁舌正在动作，
+    //! 同样不允许扳门。
+    readonly property bool doorLatched: engine
+        ? (engine.doorModel.isLocked || engine.doorModel.isTransitioning) : false
+    //! 舱门最终是否敞开。DoorLockModel 只描述 PTC 门锁的上锁/解锁，没有门体
+    //! 开合量，所以开合由本地驱动，但无论哪种模式都以门锁为硬约束——闩住时
+    //! 必合门，避开“门已锁但仍敞着”的矛盾状态。
+    readonly property bool doorOpen: root.doorAuto
+        ? !root.doorLatched
+        : (root.doorOpenRequest && !root.doorLatched)
+    //! 闩住时逆带清掉手动请求，令解锁后不会自行弹开：开门是人的动作。
+    onDoorLatchedChanged: if (root.doorLatched) root.doorOpenRequest = false;
+
+    //! 初始与复位视角。原来的 38°/14° 偏斜得过多，正面看上去是歪的；收到接近
+    //! 正视，只保留一点立体感。
+    readonly property real homeAzimuth: 20
+    readonly property real homeElevation: 8
+
     property real drumAngle: 0
-    property real camAzimuth: 38
-    property real camElevation: 14
-    property real camDistance: 1750
+    property real camAzimuth: root.homeAzimuth
+    property real camElevation: root.homeElevation
+    property real camDistance: view3d.fitDistanceBuiltin
     property real lastX: 0
     property real lastY: 0
 
@@ -65,6 +148,38 @@ Item {
             id: mirror
             anchors.fill: parent
             transform: Scale { xScale: -1; origin.x: mirror.width / 2 }
+        }
+    }
+
+    //! 叠层上的小工具按钮（宽度随文字自适应）
+    component ToolButton: Rectangle {
+        id: btn
+
+        property string label: ""
+        property color labelColor: "#8ab4c8"
+        signal activated()
+
+        width: btnText.implicitWidth + 22
+        height: 26
+        radius: 6
+        color: btnArea.containsMouse ? "#2b3a4a" : "#1b2430"
+        opacity: 0.9
+        border.width: 1
+        border.color: "#2d3844"
+
+        Text {
+            id: btnText
+            anchors.centerIn: parent
+            text: btn.label
+            color: btn.labelColor
+            font.pixelSize: 11
+        }
+
+        MouseArea {
+            id: btnArea
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: btn.activated()
         }
     }
 
@@ -103,6 +218,37 @@ Item {
             return Qt.vector3d(w / 100, h / 100, d / 100);
         }
 
+        //! 画面充满度余量（透视下近处会比正交投影略大，留一成防下巴裁切）
+        readonly property real fitMargin: 1.1
+
+        /*!
+            把尺寸为 w×h×d 的机身完整装进画面所需的相机进退。
+
+            不能用包围球算：600×850×625 的箱体包围球半径比半高大四成，模型只能占到
+            七成画面，看起来又小又远。这里改成求箱体在屏幕上的实际铺开范围：绕竖轴
+            转 az 后，宽与深各自投影出一部分到屏幕横向；俯视角 el 又把沿视线的纵深
+            折进屏幕竖向。横、竖两个方向分别取所需进退，取其大者。
+            fieldOfView 默认是垂直方向，横向半角需经宽高比换算。
+        */
+        function fitDistanceFor(w, h, d) {
+            var az = Math.abs(root.homeAzimuth) * Math.PI / 180;
+            var el = Math.abs(root.homeElevation) * Math.PI / 180;
+            var screenW = Math.abs(w * Math.cos(az)) + Math.abs(d * Math.sin(az));
+            var alongView = Math.abs(d * Math.cos(az)) + Math.abs(w * Math.sin(az));
+            var screenH = h * Math.cos(el) + alongView * Math.sin(el);
+
+            var halfV = camera.fieldOfView / 2 * Math.PI / 180;
+            var aspect = view3d.height > 0 ? view3d.width / view3d.height : 1;
+            var halfH = Math.atan(Math.tan(halfV) * aspect);
+            return Math.max(screenH / 2 / Math.tan(halfV),
+                            screenW / 2 / Math.tan(halfH)) * view3d.fitMargin;
+        }
+
+        //! 内置模型的复位进退。舱门摆开后会向左伸出机身之外，但竖向才是约束
+        //! 方向，横向余量足够装下开门行程，所以直接按箱体尺寸求即可。
+        readonly property real fitDistanceBuiltin:
+            view3d.fitDistanceFor(view3d.bw, view3d.bh, view3d.bd)
+
         // ---------- 机身尺寸（毫米）----------
         readonly property real bw: 600          // 箱体宽
         readonly property real bh: 850          // 箱体高
@@ -117,6 +263,7 @@ Item {
         readonly property real ringIn: 175      // 圆环内径 = 可见门洞半径
         readonly property real ringOut: 292     // 圆环外径，需盖住方口四角
         readonly property real doorR: 250       // 舱门外环半径，须小于机身半宽
+        readonly property real doorOpenMax: 112 // 舱门最大开启角
 
         readonly property real drumR: 225       // 滚筒半径
         readonly property real drumLen: 380     // 滚筒轴向长度
@@ -512,7 +659,7 @@ Item {
             color: "#e6edf8"
             brightness: 0.3
         }
-        //! 滚筒内部照明：保证透过玻璃能看清筒壁与提升筋
+        //! 滚筒内部照明：保证透过玻璃能看清筒壁与提升筋（仅程序化模型需要）
         PointLight {
             position: Qt.vector3d(0, view3d.holeCY + 60, view3d.drumCZ + 130)
             color: "#eaf4ff"
@@ -520,6 +667,7 @@ Item {
             constantFade: 1.0
             linearFade: 0.28
             quadraticFade: 0.0
+            visible: !root.useExternalModel
         }
 
         // ---------- 环绕相机 ----------
@@ -542,21 +690,226 @@ Item {
                 Qt.vector3d(-root.camElevation, root.camAzimuth, 0))
         }
 
-        Node {
-            id: machine
+        // ===== 地面（两种模型方案共用）=====
+        Model {
+            source: "#Rectangle"
+            scale: view3d.dim(4200, 4200, 100)
+            position: Qt.vector3d(0, -view3d.bh / 2 - 42, 0)
+            eulerRotation.x: -90
+            materials: PrincipledMaterial {
+                baseColor: "#3f4750"
+                metalness: 0.0
+                roughness: 0.62
+            }
+        }
 
-            // ===== 地面 =====
-            Model {
-                source: "#Rectangle"
-                scale: view3d.dim(4200, 4200, 100)
-                position: Qt.vector3d(0, -view3d.bh / 2 - 42, 0)
-                eulerRotation.x: -90
-                materials: PrincipledMaterial {
-                    baseColor: "#3f4750"
-                    metalness: 0.0
-                    roughness: 0.62
+        //! GLB 不包含任何材质（实测 materials=0 images=0），统一套一层家电烤漆，
+        //! 否则会回退到默认材质而渲染成一片死黑。
+        PrincipledMaterial {
+            id: glbShell
+            baseColor: "#e9edf1"
+            metalness: 0.08
+            roughness: 0.35
+        }
+
+        // ===== 方案二：加载外部 GLB 模型 =====
+        // 三层嵌套，自内向外依次是：up 轴修正 → 缩放与居中 → 整体朝向旋转。
+        // 必须分层：同一 Node 的变换顺序为 scale→rotate→translate，若挤在一起，
+        // 旋转会作用在尚未居中的坐标上把模型甩出去。
+        Node {
+            id: externalMachine
+            visible: root.useExternalModel
+            eulerRotation.y: root.externalYaw
+
+            readonly property vector3d bmin: glbLoader.bounds.minimum
+            readonly property vector3d bmax: glbLoader.bounds.maximum
+
+            // up 轴修正后的包围盒。绕 X 轴 -90° 把 (x,y,z) 映射为 (x,z,-y)，
+            // 因此原 Z 区间成为高度，原 Y 区间取反后成为深度。
+            readonly property vector3d rmin: root.externalZUp
+                ? Qt.vector3d(externalMachine.bmin.x, externalMachine.bmin.z,
+                              -externalMachine.bmax.y)
+                : externalMachine.bmin
+            readonly property vector3d rmax: root.externalZUp
+                ? Qt.vector3d(externalMachine.bmax.x, externalMachine.bmax.z,
+                              -externalMachine.bmin.y)
+                : externalMachine.bmax
+
+            readonly property real srcH: Math.max(0.0001,
+                                                  externalMachine.rmax.y
+                                                  - externalMachine.rmin.y)
+            readonly property real fit: view3d.bh / externalMachine.srcH
+
+            // 缩放后的实际外形尺寸，供相机进退与贴纸定位使用
+            readonly property real fitW: (externalMachine.rmax.x
+                                         - externalMachine.rmin.x)
+                                        * externalMachine.fit
+            readonly property real fitD: (externalMachine.rmax.z
+                                         - externalMachine.rmin.z)
+                                        * externalMachine.fit
+
+            //! 刚好完整装进画面所需的相机进退（按复位视角下的屏幕投影范围求）
+            readonly property real fitDistance:
+                view3d.fitDistanceFor(externalMachine.fitW, view3d.bh,
+                                      externalMachine.fitD)
+
+            //! 按名字找到的门体节点（未找到为 null）
+            property var doorNode: null
+            //! 门体节点自带的初始欧拉角，摆动量叠加在它之上
+            property vector3d doorHomeRotation: Qt.vector3d(0, 0, 0)
+            //! 门体摆动量，缓动时长与内置模型保持一致
+            property real doorAngle: root.doorOpen ? root.externalDoorOpenMax : 0
+            Behavior on doorAngle {
+                NumberAnimation { duration: 700; easing.type: Easing.InOutCubic }
+            }
+
+            /*!
+                递归扫描加载出来的子树：给所有 Model 赋上漆面材质，同时按名字找出门体
+                节点。RuntimeLoader 不提供覆盖材质与取子节点的接口，只能在加载完成后自己
+                遍历；非 Model 节点没有 materials 属性。
+                先写 doorHomeRotation 再写 doorNode：下方的 Binding 以 doorNode 为开关，
+                反序会让它先拿到旧的初始角。
+            */
+            function scanLoaded(node) {
+                for (var i = 0; i < node.children.length; ++i) {
+                    var child = node.children[i];
+                    if (child.materials !== undefined)
+                        child.materials = [glbShell];
+                    if (externalMachine.doorNode === null
+                            && root.externalDoorNodeHint.length > 0
+                            && child.objectName.toLowerCase().indexOf(
+                                root.externalDoorNodeHint.toLowerCase()) >= 0) {
+                        externalMachine.doorHomeRotation = child.eulerRotation;
+                        externalMachine.doorNode = child;
+                    }
+                    externalMachine.scanLoaded(child);
                 }
             }
+
+            // 把铰链位置设为门体节点的旋转中心。pivot 在旋转前先把节点平移 -pivot，
+            // 因此零角时不会改变外观，只改变绕什么转。
+            Binding {
+                target: externalMachine.doorNode
+                when: externalMachine.doorNode !== null
+                property: "pivot"
+                value: root.externalDoorHinge
+                restoreMode: Binding.RestoreNone
+            }
+
+            // 摆动量只加在选定的那根轴上。这是相加而不是真正的旋转叠加，仅当门体
+            // 节点自带旋转为零、或本就绕同一轴时等价；对正常导出的门体这一前提成立。
+            Binding {
+                target: externalMachine.doorNode
+                when: externalMachine.doorNode !== null
+                property: "eulerRotation"
+                value: Qt.vector3d(
+                    externalMachine.doorHomeRotation.x
+                        + (root.doorAxisEffective === "x"
+                           ? externalMachine.doorAngle : 0),
+                    externalMachine.doorHomeRotation.y
+                        + (root.doorAxisEffective === "y"
+                           ? externalMachine.doorAngle : 0),
+                    externalMachine.doorHomeRotation.z
+                        + (root.doorAxisEffective === "z"
+                           ? externalMachine.doorAngle : 0))
+                restoreMode: Binding.RestoreNone
+            }
+
+            Node {
+                scale: Qt.vector3d(externalMachine.fit, externalMachine.fit,
+                                   externalMachine.fit)
+                position: Qt.vector3d(
+                    -(externalMachine.rmin.x + externalMachine.rmax.x) / 2
+                        * externalMachine.fit,
+                    -view3d.bh / 2
+                        - externalMachine.rmin.y * externalMachine.fit,
+                    -(externalMachine.rmin.z + externalMachine.rmax.z) / 2
+                        * externalMachine.fit)
+
+                Node {
+                    eulerRotation.x: root.externalZUp ? -90 : 0
+
+                    RuntimeLoader {
+                        id: glbLoader
+                        source: root.externalModelSource
+
+                        onStatusChanged: {
+                            if (glbLoader.status !== RuntimeLoader.Success)
+                                return;
+                            // 重新加载会换掉整棵子树，旧的门体节点引用必须先作废
+                            externalMachine.doorNode = null;
+                            externalMachine.scanLoaded(glbLoader);
+                            // 模型比例因文件而异，加载完成后把相机退到刚好能看全的进退
+                            root.camDistance = externalMachine.fitDistance;
+                        }
+                    }
+                }
+            }
+
+            // ===== 外部模型上的贴纸 =====
+            // GLB 本身不带任何贴图，这里把程序化模型那套 Texture 复用过来，贴在包围
+            // 盒表面。stickerYaw 已扣掉整体朝向，再由 stickerFaceOffset 按 90° 步进换面，
+            // 偏移距离随之在深度/宽度间自动切换。
+            Node {
+                id: glbStickers
+                visible: root.showExternalStickers
+                eulerRotation.y: root.stickerYaw
+
+                readonly property real dist:
+                    (Math.abs(root.stickerYaw % 180) < 1
+                     ? externalMachine.fitD : externalMachine.fitW) / 2 + 3
+
+                //! 品牌铭牌
+                Model {
+                    source: "#Rectangle"
+                    scale: view3d.dim(200, 48, 1)
+                    position: Qt.vector3d(0, 290, glbStickers.dist)
+                    materials: PrincipledMaterial {
+                        baseColorMap: brandTex
+                        metalness: 0.0
+                        roughness: 0.5
+                    }
+                }
+                //! 型号铭牌
+                Model {
+                    source: "#Rectangle"
+                    scale: view3d.dim(200, 44, 1)
+                    position: Qt.vector3d(140, -300, glbStickers.dist)
+                    materials: PrincipledMaterial {
+                        baseColorMap: modelTex
+                        metalness: 0.0
+                        roughness: 0.5
+                    }
+                }
+                //! 能效标签
+                Model {
+                    source: "#Rectangle"
+                    scale: view3d.dim(110, 150, 1)
+                    position: Qt.vector3d(-185, -250, glbStickers.dist)
+                    materials: PrincipledMaterial {
+                        baseColorMap: energyTex
+                        metalness: 0.0
+                        roughness: 0.5
+                    }
+                }
+                //! 卖点贴纸
+                Model {
+                    source: "#Rectangle"
+                    scale: view3d.dim(130, 60, 1)
+                    position: Qt.vector3d(165, 225, glbStickers.dist)
+                    materials: PrincipledMaterial {
+                        baseColorMap: capacityTex
+                        metalness: 0.0
+                        roughness: 0.5
+                    }
+                }
+            }
+        }
+
+        // ===== 方案一：代码生成的程序化模型（保留，可随时切回）=====
+        Node {
+            id: machine
+            visible: !root.useExternalModel
 
             // ===== 机身外壳：五块板围成前部开口的箱体 =====
             // 后板
@@ -862,15 +1215,16 @@ Item {
             }
 
             // ===== 舱门 =====
-            // DoorLockModel 只描述 PTC 门锁的上锁/解锁，并不含门体开合语义（Unlocked
-            // 仅表示锁未锁上，不等于门敞开），因此门保持关闭，锁定状态由面板上的门锁
-            // 指示灯呈现。铰链节点与动画保留，将来若引入真正的开门量，驱动 openAngle 即可。
+            // 铰链在左侧，门体（金属外环 / 密封圈 / 玻璃观察窗 / 把手）全部挂在
+            // doorBody 下，因此只需转动铰链节点就会整体摆出。绕 Y 轴正向旋转会把门的
+            // 自由边推向 -Z（机内），所以向外开必须取负角。
+            // 门锁只负责闩住与否，开合量由 root.doorOpen 给出。
             Node {
                 id: doorPivot
                 position: Qt.vector3d(-view3d.doorR - 8, view3d.holeCY,
                                       view3d.frontZ + 12)
 
-                property real openAngle: 0
+                property real openAngle: root.doorOpen ? -view3d.doorOpenMax : 0
                 Behavior on openAngle {
                     NumberAnimation { duration: 700; easing.type: Easing.InOutCubic }
                 }
@@ -1326,11 +1680,16 @@ Item {
     SequentialAnimation {
         id: resetAnim
         NumberAnimation { target: root; property: "camAzimuth";
-                          to: 38; duration: 400; easing.type: Easing.OutQuad }
+                          to: root.homeAzimuth;
+                          duration: 400; easing.type: Easing.OutQuad }
         NumberAnimation { target: root; property: "camElevation";
-                          to: 14; duration: 400; easing.type: Easing.OutQuad }
+                          to: root.homeElevation;
+                          duration: 400; easing.type: Easing.OutQuad }
         NumberAnimation { target: root; property: "camDistance";
-                          to: 1750; duration: 400; easing.type: Easing.OutQuad }
+                          to: root.useExternalModel
+                              ? externalMachine.fitDistance
+                              : view3d.fitDistanceBuiltin;
+                          duration: 400; easing.type: Easing.OutQuad }
     }
 
     // ---------------------------------------------------------------
@@ -1380,6 +1739,109 @@ Item {
         }
     }
 
+    // ---------------------------------------------------------------
+    // 模型来源 / 舱门开合 / 外部模型姿态调整
+    // ---------------------------------------------------------------
+    Row {
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 12
+        spacing: 8
+
+        ToolButton {
+            label: root.useExternalModel ? qsTr("GLB 模型") : qsTr("内置模型")
+            labelColor: "#7fdcff"
+            onActivated: root.useExternalModel = !root.useExternalModel
+        }
+
+        //! 舱门开合。内置模型天然可动；GLB 需要门体是独立节点，定位不到时
+        //! 直接把原因标在按钮上，而不是默默隐起来。
+        ToolButton {
+            visible: !root.doorAnimatable
+            label: qsTr("门:无独立节点")
+            labelColor: root.colorMuted
+        }
+
+        ToolButton {
+            visible: root.doorAnimatable
+            label: root.doorAuto ? qsTr("门:自动") : qsTr("门:手动")
+            labelColor: root.doorAuto ? "#7fdcff" : "#8ab4c8"
+            onActivated: root.doorAuto = !root.doorAuto
+        }
+
+        ToolButton {
+            visible: root.doorAnimatable && !root.doorAuto
+            label: root.doorLatched ? qsTr("门已锁")
+                                    : (root.doorOpen ? qsTr("关门")
+                                                     : qsTr("开门"))
+            labelColor: root.doorLatched ? root.colorMuted : "#8ab4c8"
+            onActivated: if (!root.doorLatched)
+                             root.doorOpenRequest = !root.doorOpenRequest
+        }
+
+        ToolButton {
+            visible: root.useExternalModel
+            label: qsTr("转 90°")
+            onActivated: root.externalYaw = (root.externalYaw + 90) % 360
+        }
+
+        ToolButton {
+            visible: root.useExternalModel
+            label: root.externalZUp ? qsTr("Z 轴向上") : qsTr("Y 轴向上")
+            onActivated: root.externalZUp = !root.externalZUp
+        }
+
+        ToolButton {
+            visible: root.useExternalModel
+            label: root.showExternalStickers ? qsTr("贴纸开") : qsTr("贴纸关")
+            onActivated: root.showExternalStickers = !root.showExternalStickers
+        }
+
+        ToolButton {
+            visible: root.useExternalModel && root.showExternalStickers
+            label: qsTr("贴纸换面")
+            onActivated: root.stickerFaceOffset =
+                             (root.stickerFaceOffset + 90) % 360
+        }
+    }
+
+    //! GLB 加载中 / 失败时的提示（加载成功后自动隐藏）
+    Rectangle {
+        anchors.centerIn: parent
+        visible: root.useExternalModel
+                 && glbLoader.status !== RuntimeLoader.Success
+        width: loadText.implicitWidth + 24
+        height: loadText.implicitHeight + 16
+        radius: 6
+        color: "#1b2430"
+        opacity: 0.92
+        border.width: 1
+        border.color: "#2d3844"
+
+        Text {
+            id: loadText
+            anchors.centerIn: parent
+            width: Math.min(implicitWidth, root.width - 80)
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: glbLoader.status === RuntimeLoader.Error ? "#ff8a80"
+                                                           : "#7fdcff"
+            text: {
+                switch (glbLoader.status) {
+                case RuntimeLoader.Loading:
+                    return qsTr("正在加载 GLB 模型…");
+                case RuntimeLoader.Error:
+                    return qsTr("GLB 加载失败：") + glbLoader.errorString
+                           + "\n" + root.externalModelSource;
+                case RuntimeLoader.Empty:
+                    return qsTr("未指定 GLB 模型");
+                default:
+                    return "";
+                }
+            }
+        }
+    }
+
     Text {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -1393,7 +1855,8 @@ Item {
         anchors.left: parent.left
         anchors.bottom: parent.bottom
         anchors.margins: 10
-        text: qsTr("洗衣机 3D 运行视图")
+        text: root.useExternalModel ? qsTr("洗衣机 3D 运行视图（GLB 模型）")
+                                    : qsTr("洗衣机 3D 运行视图（内置模型）")
         color: root.colorMuted
         font.pixelSize: 12
     }

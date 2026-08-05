@@ -7,6 +7,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     Gui
     Quick
     Quick3D
+    Quick3DAssetUtils
     SerialPort
     Charts)
 
@@ -41,6 +42,16 @@ foreach(qml_file IN LISTS APP_QML_FILES)
 endforeach()
 
 # ---------------------------------------------------------------------------
+# 外部 3D 模型：RuntimeLoader 内部用 QUrl::toLocalFile() 把路径交给 assimp 读取，
+# 无法从 qrc 资源加载（qrc URL 转本地路径为空，assimp 报 "file not found"），
+# 因此 GLB 必须以真实文件形式随可执行程序发布，运行时由 QML 侧拼出文件 URL。
+# 原文件名含空格，复制时统一重命名为无空格路径以免 URL 解析出错。
+# 更换模型时只需改动下面的变量并重新构建。
+# ---------------------------------------------------------------------------
+set(APP_MACHINE_MODEL "LG Washing Machine.glb")
+set(APP_MACHINE_MODEL_DEST "models/washing-machine.glb")
+
+# ---------------------------------------------------------------------------
 # 仿真核心库（物理模型 / 仿真引擎 / 通信层）
 # ---------------------------------------------------------------------------
 add_library(hil_core STATIC ${APP_SOURCES} ${APP_HEADERS})
@@ -71,6 +82,7 @@ qt_add_qml_module(${APP_TARGET}
 target_link_libraries(${APP_TARGET} PRIVATE
     hil_core
     Qt6::Quick3D
+    Qt6::Quick3DAssetUtils
     Qt6::Charts)
 
 target_compile_definitions(${APP_TARGET} PRIVATE
@@ -89,6 +101,15 @@ add_custom_command(TARGET ${APP_TARGET} POST_BUILD
         "$<TARGET_FILE_DIR:${APP_TARGET}>/config"
     COMMENT "Copying simulation config files")
 
+# GLB 模型需以真实文件供 RuntimeLoader 读取，拷到可执行文件旁
+add_custom_command(TARGET ${APP_TARGET} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:${APP_TARGET}>/models"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/${APP_MACHINE_MODEL}"
+        "$<TARGET_FILE_DIR:${APP_TARGET}>/${APP_MACHINE_MODEL_DEST}"
+    COMMENT "Copying washing machine GLB model")
+
 install(TARGETS ${APP_TARGET}
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -96,6 +117,10 @@ install(TARGETS ${APP_TARGET}
 
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/config"
     DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${APP_MACHINE_MODEL}"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}/models"
+    RENAME "washing-machine.glb")
 
 # ---------------------------------------------------------------------------
 # 单元测试（Qt Test 可用时启用）

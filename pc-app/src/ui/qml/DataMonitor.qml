@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import HIL.Communication 1.0
 
 /*!
     底部数据监控面板：水位/水温/转速三条曲线的滚动时间窗图表。
@@ -13,6 +14,10 @@ Rectangle {
     id: root
 
     required property var engine
+    //! MatSerialManager 实例（MAT 模式主控状态）
+    property var mat: null
+    //! 工作模式: 0=HIL, 1=MAT
+    property int workMode: 0
     //! 面板展开状态（折叠时只保留标题栏）
     property bool expanded: true
 
@@ -43,6 +48,15 @@ Rectangle {
 
     //! 鼠标悬停命中的采样点索引，-1 表示未命中
     property int hoverIndex: -1
+
+    // MAT 状态缓存
+    property int matWorkStatus: 0
+    property int matFaultCode:  0
+    property int matMotorRpm:   0
+    property int matWaterLevel: 0
+    property int matWaterTemp:  0
+    property int matRemainMin:  0
+    property int matRemainSec:  0
 
     color: colorSurface
     radius: 8
@@ -116,6 +130,21 @@ Rectangle {
         running: root.engine !== null
         repeat: true
         onTriggered: root.appendSample()
+    }
+
+    Connections {
+        target: root.mat
+        function onStatusReceived(workStatus, faultCode, motorRpm,
+                                  waterLevel, waterTemp,
+                                  remainMin, remainSec, rawSdu) {
+            root.matWorkStatus = workStatus
+            root.matFaultCode  = faultCode
+            root.matMotorRpm   = motorRpm
+            root.matWaterLevel = waterLevel
+            root.matWaterTemp  = waterTemp
+            root.matRemainMin  = remainMin
+            root.matRemainSec  = remainSec
+        }
     }
 
     // ------------------------------------------------------------------
@@ -496,6 +525,53 @@ Rectangle {
                 seriesColor: "#ab47bc"
                 value: root.engine
                        ? (root.engine.tempModel.ntcResistance / 1000).toFixed(2) + " kΩ" : "-"
+            }
+        }
+
+        // --- MAT 主控状态数据（MAT 模式可见）---
+        RowLayout {
+            Layout.fillWidth: true
+            visible: root.expanded && root.workMode === 1
+            spacing: 8
+
+            ValueCell {
+                label: qsTr("MAT 工作状态")
+                seriesColor: "#4fc3f7"
+                value: "0x" + root.matWorkStatus.toString(16).toUpperCase().padStart(2, '0')
+            }
+
+            ValueCell {
+                label: qsTr("MAT 故障码")
+                seriesColor: root.matFaultCode === 0 ? "#66bb6a" : "#ef5350"
+                value: root.matFaultCode === 0 ? qsTr("正常") : ("E" + root.matFaultCode)
+            }
+
+            ValueCell {
+                label: qsTr("MAT 转速")
+                seriesColor: "#ffca28"
+                value: root.matMotorRpm + " r/min"
+            }
+
+            ValueCell {
+                label: qsTr("MAT 水位")
+                seriesColor: "#42a5f5"
+                value: root.matWaterLevel + " mm"
+            }
+
+            ValueCell {
+                label: qsTr("MAT 水温")
+                seriesColor: "#ef5350"
+                value: root.matWaterTemp + " °C"
+            }
+
+            ValueCell {
+                label: qsTr("MAT 剩余")
+                seriesColor: "#ab47bc"
+                value: {
+                    var mm = String(root.matRemainMin).padStart(2, '0')
+                    var ss = String(root.matRemainSec).padStart(2, '0')
+                    return mm + ":" + ss
+                }
             }
         }
     }

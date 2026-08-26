@@ -11,6 +11,8 @@ import HIL.Fault 1.0
 
     SimulationEngine 在此唯一实例化并向下传递；场景管理器直接取引擎内部的
     engine.scenarios，保证界面选择的程序与状态机实际加载的场景是同一份数据。
+
+    底部面板标签页：0=数据监控, 1=串口调试（HIL）, 2=MAT协议
 */
 ApplicationWindow {
     id: root
@@ -18,8 +20,10 @@ ApplicationWindow {
     readonly property color colorBackground: "#2b2b2b"
     readonly property color colorAccent: "#4fc3f7"
 
-    //! 底部面板当前选中的标签页（0=数据监控, 1=串口调试）
+    //! 底部面板当前选中的标签页（0=数据监控, 1=串口调试, 2=MAT协议）
     property int bottomTab: 0
+    //! 工作模式: 0=HIL, 1=MAT
+    property int workMode: 0
     //! 底部面板是否展开
     property bool bottomExpanded: true
     //! 底部面板目标高度
@@ -45,6 +49,11 @@ ApplicationWindow {
 
     SerialManager {
         id: serialManager
+    }
+
+    //! MAT 协议串口管理器（直连洗衣机主控板，独立于 HIL 串口）
+    MatSerialManager {
+        id: matSerial
     }
 
     //! 故障注入器：对下行传感器输出通道注入断线/短路等故障
@@ -73,7 +82,10 @@ ApplicationWindow {
     //! 引擎自带的场景管理器（startWashProgram 就是从它取场景配置）
     readonly property var scenarios: simEngine.scenarios
 
-    Component.onCompleted: serialManager.refreshPorts()
+    Component.onCompleted: {
+        serialManager.refreshPorts()
+        matSerial.refreshPorts()
+    }
 
     // 引擎保护动作（溢流/过热/超时）以浮层提示
     Connections {
@@ -89,6 +101,11 @@ ApplicationWindow {
     Connections {
         target: serialManager
         function onErrorOccurred(error) { warningBanner.show(qsTr("串口: ") + error); }
+    }
+
+    Connections {
+        target: matSerial
+        function onErrorOccurred(error) { warningBanner.show(qsTr("MAT: ") + error); }
     }
 
     // ------------------------------------------------------------------
@@ -130,6 +147,9 @@ ApplicationWindow {
             Layout.preferredHeight: 38
             engine: simEngine
             serial: serialManager
+            mat: matSerial
+            workMode: root.workMode
+            onWorkModeChanged: root.workMode = workMode
         }
 
         SplitView {
@@ -157,6 +177,8 @@ ApplicationWindow {
                 engine: simEngine
                 faultInjector: faultInjector
                 recorder: dataRecorder
+                workMode: root.workMode
+                mat: matSerial
             }
         }
 
@@ -217,7 +239,7 @@ ApplicationWindow {
 
                         // 标签页按钮
                         Repeater {
-                            model: [qsTr("数据监控"), qsTr("串口调试")]
+                            model: [qsTr("数据监控"), qsTr("串口调试 HIL"), qsTr("MAT协议")]
 
                             Rectangle {
                                 Layout.preferredHeight: 28
@@ -280,6 +302,8 @@ ApplicationWindow {
                                 onClicked: serialDebug.logLines = []
                             }
                         }
+
+                        // MAT 页专用：连接状态指示灯已移至 ConnectionBar，此处仅保留占位
                     }
                 }
 
@@ -294,6 +318,8 @@ ApplicationWindow {
                         id: dataMonitor
                         anchors.fill: parent
                         engine: simEngine
+                        mat: matSerial
+                        workMode: root.workMode
                         expanded: true
                         visible: root.bottomTab === 0
                     }
@@ -303,6 +329,13 @@ ApplicationWindow {
                         anchors.fill: parent
                         serial: serialManager
                         visible: root.bottomTab === 1
+                    }
+
+                    MatPanel {
+                        id: matPanel
+                        anchors.fill: parent
+                        mat: matSerial
+                        visible: root.bottomTab === 2
                     }
                 }
             }

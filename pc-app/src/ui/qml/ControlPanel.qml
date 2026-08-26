@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import HIL.Core 1.0
 import HIL.Models 1.0
+import HIL.Communication 1.0
 
 /*!
     右侧控制面板：运行控制 / 自动程序 / 手动执行器 / 实时状态 / 故障注入 / 数据记录。
@@ -18,6 +19,10 @@ Rectangle {
     property var faultInjector: null
     //! 数据记录器（由 Main.qml 传入，可为 null）
     property var recorder: null
+    //! MatSerialManager 实例（MAT 模式直连主控板）
+    property var mat: null
+    //! 工作模式: 0=HIL, 1=MAT
+    property int workMode: 0
 
     readonly property color colorSurface: "#333333"
     readonly property color colorSurfaceAlt: "#3a3a3a"
@@ -76,9 +81,35 @@ Rectangle {
         motor.motorPwmDuty = Math.max(0, Math.min(1, duty));
     }
 
+    // MAT 状态缓存
+    property int matWorkStatus: 0
+    property int matFaultCode:  0
+    property int matMotorRpm:   0
+    property int matWaterLevel: 0
+    property int matWaterTemp:  0
+    property int matRemainMin:  0
+    property int matRemainSec:  0
+    property int matCtrlB1: 0
+    property int matCtrlB2: 0
+
     Connections {
         target: root.engine
         function onTicked(elapsedTime) { root.updateManualMotor(); }
+    }
+
+    Connections {
+        target: root.mat
+        function onStatusReceived(workStatus, faultCode, motorRpm,
+                                  waterLevel, waterTemp,
+                                  remainMin, remainSec, rawSdu) {
+            root.matWorkStatus = workStatus
+            root.matFaultCode  = faultCode
+            root.matMotorRpm   = motorRpm
+            root.matWaterLevel = waterLevel
+            root.matWaterTemp  = waterTemp
+            root.matRemainMin  = remainMin
+            root.matRemainSec  = remainSec
+        }
     }
 
     // ------------------------------------------------------------------
@@ -277,6 +308,26 @@ Rectangle {
         }
     }
 
+    //! MAT 执行器位开关：带指示灯的 Switch 行
+    component BitSwitch: RowLayout {
+        id: bs
+        property string label: ""
+        property bool checked: false
+        signal toggled(bool on)
+        Layout.fillWidth: true; spacing: 6
+
+        Rectangle {
+            width: 10; height: 10; radius: 5
+            color: bs.checked ? "#66bb6a" : "#555555"
+        }
+        Text { text: bs.label; color: "#e0e0e0"; font.pixelSize: 13 }
+        Item { Layout.fillWidth: true }
+        Switch {
+            checked: bs.checked
+            onToggled: bs.toggled(checked)
+        }
+    }
+
     // ------------------------------------------------------------------
     // 面板主体
     // ------------------------------------------------------------------
@@ -292,9 +343,10 @@ Rectangle {
             width: panelScroll.availableWidth
             spacing: 10
 
-            // ============ 运行控制 ============
+            // ============ 运行控制（HIL 模式）============
             GroupCard {
                 title: qsTr("运行控制")
+                visible: root.workMode === 0
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -437,10 +489,10 @@ Rectangle {
                 }
             }
 
-            // ============ 自动程序 ============
+            // ============ 自动程序（HIL 联动模式）============
             GroupCard {
                 title: qsTr("洗涤程序（联动模式）")
-                visible: root.autoMode
+                visible: root.workMode === 0 && root.autoMode
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -561,10 +613,10 @@ Rectangle {
                 }
             }
 
-            // ============ 手动控制 ============
+            // ============ 手动控制（HIL 模式）============
             GroupCard {
                 title: qsTr("手动控制")
-                visible: root.manualMode
+                visible: root.workMode === 0 && root.manualMode
 
                 ActuatorSwitch {
                     label: qsTr("进水阀")
@@ -738,8 +790,9 @@ Rectangle {
                     }
                 }
 
-                // 传感器输出（下位机需要复现的物理量）
+                // 传感器输出（下位机需要复现的物理量，HIL 模式可见）
                 GridLayout {
+                    visible: root.workMode === 0
                     Layout.fillWidth: true
                     columns: 2
                     rowSpacing: 4
@@ -797,6 +850,183 @@ Rectangle {
                                 + root.engine.waterModel.fillPercent.toFixed(0) + "%)" : "-"
                         color: root.colorFg
                         font.pixelSize: 12
+                    }
+                }
+            }
+
+            // ============ MAT 操作（MAT 模式）============
+            GroupCard {
+                title: qsTr("MAT 操作")
+                visible: root.workMode === 1
+
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: qsTr("查询状态")
+                        font.pixelSize: 13
+                        highlighted: true
+                        enabled: root.mat && root.mat.connected
+                        onClicked: root.mat.sendQuery()
+                    }
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: qsTr("发送控制")
+                        font.pixelSize: 13
+                        enabled: root.mat && root.mat.connected
+                        onClicked: root.mat.sendControl(root.matCtrlB1, root.matCtrlB2)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+
+                    Text { text: qsTr("自动轮询"); color: root.colorMuted; font.pixelSize: 13 }
+                    Switch {
+                        checked: root.mat ? root.mat.pollEnabled : false
+                        onToggled: root.mat && (root.mat.pollEnabled = checked)
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text { text: qsTr("间隔(ms)"); color: root.colorMuted; font.pixelSize: 12 }
+                    SpinBox {
+                        from: 200; to: 5000; stepSize: 100
+                        value: root.mat ? root.mat.pollIntervalMs : 500
+                        onValueModified: root.mat && (root.mat.pollIntervalMs = value)
+                        font.pixelSize: 12
+                    }
+                }
+            }
+
+            // ============ MAT 执行器控制 BYTE1（MAT 模式）============
+            GroupCard {
+                title: qsTr("执行器控制 BYTE1")
+                visible: root.workMode === 1
+
+                BitSwitch {
+                    label: qsTr("预洗进水阀")
+                    checked: root.matCtrlB1 & 0x80
+                    onToggled: function(on) { root.matCtrlB1 = on ? root.matCtrlB1 | 0x80 : root.matCtrlB1 & ~0x80 }
+                }
+                BitSwitch {
+                    label: qsTr("主洗进水阀")
+                    checked: root.matCtrlB1 & 0x40
+                    onToggled: function(on) { root.matCtrlB1 = on ? root.matCtrlB1 | 0x40 : root.matCtrlB1 & ~0x40 }
+                }
+                BitSwitch {
+                    label: qsTr("冲洗进水阀")
+                    checked: root.matCtrlB1 & 0x20
+                    onToggled: function(on) { root.matCtrlB1 = on ? root.matCtrlB1 | 0x20 : root.matCtrlB1 & ~0x20 }
+                }
+                BitSwitch {
+                    label: qsTr("冷凝进水阀")
+                    checked: root.matCtrlB1 & 0x10
+                    onToggled: function(on) { root.matCtrlB1 = on ? root.matCtrlB1 | 0x10 : root.matCtrlB1 & ~0x10 }
+                }
+                BitSwitch {
+                    label: qsTr("排水泵")
+                    checked: root.matCtrlB1 & 0x08
+                    onToggled: function(on) { root.matCtrlB1 = on ? root.matCtrlB1 | 0x08 : root.matCtrlB1 & ~0x08 }
+                }
+                BitSwitch {
+                    label: qsTr("水加热器")
+                    checked: root.matCtrlB1 & 0x04
+                    onToggled: function(on) { root.matCtrlB1 = on ? root.matCtrlB1 | 0x04 : root.matCtrlB1 & ~0x04 }
+                }
+                BitSwitch {
+                    label: qsTr("风干加热")
+                    checked: root.matCtrlB1 & 0x02
+                    onToggled: function(on) { root.matCtrlB1 = on ? root.matCtrlB1 | 0x02 : root.matCtrlB1 & ~0x02 }
+                }
+                BitSwitch {
+                    label: qsTr("风机")
+                    checked: root.matCtrlB1 & 0x01
+                    onToggled: function(on) { root.matCtrlB1 = on ? root.matCtrlB1 | 0x01 : root.matCtrlB1 & ~0x01 }
+                }
+            }
+
+            // ============ MAT 执行器控制 BYTE2（MAT 模式）============
+            GroupCard {
+                title: qsTr("执行器控制 BYTE2")
+                visible: root.workMode === 1
+
+                BitSwitch {
+                    label: qsTr("门锁")
+                    checked: root.matCtrlB2 & 0x80
+                    onToggled: function(on) { root.matCtrlB2 = on ? root.matCtrlB2 | 0x80 : root.matCtrlB2 & ~0x80 }
+                }
+                BitSwitch {
+                    label: qsTr("洗涤剂投入")
+                    checked: root.matCtrlB2 & 0x40
+                    onToggled: function(on) { root.matCtrlB2 = on ? root.matCtrlB2 | 0x40 : root.matCtrlB2 & ~0x40 }
+                }
+                BitSwitch {
+                    label: qsTr("柔顺剂投入")
+                    checked: root.matCtrlB2 & 0x20
+                    onToggled: function(on) { root.matCtrlB2 = on ? root.matCtrlB2 | 0x20 : root.matCtrlB2 & ~0x20 }
+                }
+                BitSwitch {
+                    label: qsTr("UV杀菌灯")
+                    checked: root.matCtrlB2 & 0x10
+                    onToggled: function(on) { root.matCtrlB2 = on ? root.matCtrlB2 | 0x10 : root.matCtrlB2 & ~0x10 }
+                }
+            }
+
+            // ============ MAT 主控状态（MAT 模式）============
+            GroupCard {
+                title: qsTr("主控状态")
+                visible: root.workMode === 1
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2; rowSpacing: 6; columnSpacing: 8
+
+                    Text { text: qsTr("工作状态"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: "0x" + root.matWorkStatus.toString(16).toUpperCase().padStart(2, '0')
+                        color: root.colorFg; font.pixelSize: 14; font.bold: true
+                    }
+
+                    Text { text: qsTr("故障码"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: root.matFaultCode === 0 ? qsTr("正常") : ("E" + root.matFaultCode)
+                        color: root.matFaultCode === 0 ? "#66bb6a" : "#ef5350"
+                        font.pixelSize: 14; font.bold: true
+                    }
+
+                    Text { text: qsTr("电机转速"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: root.matMotorRpm + " r/min"
+                        color: root.colorFg; font.pixelSize: 14
+                    }
+
+                    Text { text: qsTr("水位"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: root.matWaterLevel + " mm"
+                        color: root.colorFg; font.pixelSize: 14
+                    }
+
+                    Text { text: qsTr("水温"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: root.matWaterTemp + " °C"
+                        color: root.colorFg; font.pixelSize: 14
+                    }
+
+                    Text { text: qsTr("剩余时间"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: {
+                            var mm = String(root.matRemainMin).padStart(2, '0')
+                            var ss = String(root.matRemainSec).padStart(2, '0')
+                            return mm + ":" + ss
+                        }
+                        color: root.colorFg; font.pixelSize: 14
                     }
                 }
             }

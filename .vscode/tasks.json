@@ -119,6 +119,37 @@
       "options": { "cwd": "${workspaceFolder}" },
       "dependsOn": "固件: 构建 (Release)",
       "problemMatcher": []
-    }
+    },
+    {
+        "label": "Build Firmware",
+        "type": "shell",
+        "command": "build.bat",
+        "group": {
+            "kind": "build",
+            "isDefault": true
+        },
+        "problemMatcher": []
+    },
+    {
+        "label": "Flash Firmware",
+        "type": "shell",
+        "command": "flash.bat",
+        "group": "build",
+        "problemMatcher": []
+    },
+    {
+        "label": "Build and Flash",
+        "type": "shell",
+        "command": "cmd /c build.bat && flash.bat",
+        "group": "build",
+        "problemMatcher": []
+    },
+    {
+        "label": "Clean Build",
+        "type": "shell",
+        "command": "rmdir /s /q build && build.bat",
+        "group": "build",
+        "problemMatcher": []
+    },
   ]
 }

@@ -88,6 +88,8 @@ signals:
     void ackReceived(CommandId cmd, AckStatus status);
     void heartbeatReceived();
     void errorOccurred(const QString &error);
+    //! 调试信息输出（收发帧摘要、状态变迁等），供调试面板显示
+    void debugMessage(const QString &message);
 
 private slots:
     void onReadyRead();
@@ -103,6 +105,10 @@ private:
     //! 收到任意有效帧时刷新链路存活时间戳
     void refreshLiveness();
     void countError();
+    //! 将字节数组格式化为可读十六进制摘要
+    static QString formatHex(const QByteArray &data, int maxBytes = 32);
+    //! 命令码转可读名称
+    static QString commandName(uint8_t cmd);
 
     QSerialPort *m_serial;
     ProtocolCodec *m_codec;

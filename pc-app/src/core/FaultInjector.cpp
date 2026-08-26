@@ -22,7 +22,7 @@ FaultInjector::FaultInjector(QObject *parent)
 void FaultInjector::injectFault(int channel, int faultType,
                                 double durationSec, double magnitude)
 {
-    if (channel < WaterLevelSensor || channel > DoorLockSignal)
+    if (channel < WaterLevelSensor || channel > MotorHall)
         return;
     if (faultType < None || faultType > ShortCircuit)
         return;
@@ -52,7 +52,7 @@ void FaultInjector::injectFault(int channel, int faultType,
 
 void FaultInjector::clearFault(int channel)
 {
-    if (channel < WaterLevelSensor || channel > DoorLockSignal)
+    if (channel < WaterLevelSensor || channel > MotorHall)
         return;
 
     const Channel ch = static_cast<Channel>(channel);
@@ -110,7 +110,7 @@ double FaultInjector::applyFault(Channel ch, double originalValue, double dt)
 
 bool FaultInjector::isFaultActive(int channel) const
 {
-    if (channel < WaterLevelSensor || channel > DoorLockSignal)
+    if (channel < WaterLevelSensor || channel > MotorHall)
         return false;
     const auto it = m_faults.find(static_cast<Channel>(channel));
     return it != m_faults.end() && it->active && it->type != None;
@@ -152,7 +152,6 @@ double FaultInjector::applyDisconnected(Channel ch, double value)
     case WaterLevelSensor: return 0.0;         //!< 频率通道断线 → 0Hz
     case TempSensor:       return kOpenNtcOhm; //!< NTC 断线 → 开路（极大阻值）
     case MotorHall:        return 0.0;         //!< Hall 断线 → 0Hz
-    case DoorLockSignal:   return 0.0;         //!< 门锁断线 → 固定解锁
     }
     return value;
 }
@@ -160,11 +159,7 @@ double FaultInjector::applyDisconnected(Channel ch, double value)
 double FaultInjector::applyOutOfRange(Channel ch, double value, double mag)
 {
     // 输出值 × magnitude，超出主控标定范围
-    const double out = value * mag;
-    // 门锁为电平量，超范围后仍按电平语义输出
-    if (ch == DoorLockSignal)
-        return out > 0.5 ? 1.0 : 0.0;
-    return qMax(0.0, out);
+    return qMax(0.0, value * mag);
 }
 
 double FaultInjector::applyJitter(Channel ch, double value, double mag)
@@ -175,10 +170,7 @@ double FaultInjector::applyJitter(Channel ch, double value, double mag)
     if (amp < 1e-9)
         amp = mag * 0.01;
     const double noise = (static_cast<double>(m_rng.bounded(20001)) / 10000.0 - 1.0) * amp;
-    const double out = value + noise;
-    if (ch == DoorLockSignal)
-        return out > 0.5 ? 1.0 : 0.0;
-    return qMax(0.0, out);
+    return qMax(0.0, value + noise);
 }
 
 double FaultInjector::applyStuck(Channel ch, double value)
@@ -199,7 +191,6 @@ double FaultInjector::applyShortCircuit(Channel ch)
     case WaterLevelSensor: return kShortFreqHz; //!< 频率拉满 100kHz
     case TempSensor:       return 0.0;          //!< NTC 短路 → 0Ω
     case MotorHall:        return kShortFreqHz; //!< 频率拉满 100kHz
-    case DoorLockSignal:   return 1.0;          //!< 门锁短路 → 固定锁定
     }
     return 0.0;
 }
@@ -210,7 +201,6 @@ QString FaultInjector::channelName(Channel ch)
     case WaterLevelSensor: return QStringLiteral("水位传感器");
     case TempSensor:       return QStringLiteral("NTC温度传感器");
     case MotorHall:        return QStringLiteral("Hall转速传感器");
-    case DoorLockSignal:   return QStringLiteral("门锁信号");
     }
     return QStringLiteral("未知通道");
 }

@@ -46,8 +46,7 @@ import HIL.Models 1.0
       - 正面板四块围出开口，再由圆环段修饰成圆形门洞
       - 门洞内黑色橡胶密封套筒，后方是不锈钢滚筒（提升筋 + 排水孔）
       - 滚筒内水位随 waterModel.waterLevel 变化
-      - 舱门（含玻璃观察窗）可绕左侧铰链开合，右上角按钮在手动/自动间切换；
-        自动模式跟随门锁（解锁即开、上锁即合），两种模式下门锁闩住时都强制合门
+      - 舱门（含玻璃观察窗）可绕左侧铰链开合，由 engine.doorOpenState 控制开合
       - 滚筒随 motorModel.speedRpm 旋转
       - 顶部凸出控制面板（显示屏 / 旋钮 / 四枚指示灯）+ 洗涤剂抽屉
 
@@ -108,22 +107,8 @@ Item {
     readonly property bool doorAnimatable: root.useExternalModel
         ? externalMachine.doorNode !== null : true
 
-    //! 舱门开合是否由仿真状态自动驱动（自动：解锁即开、上锁即合）
-    property bool doorAuto: false
-    //! 手动模式下的开门请求
-    property bool doorOpenRequest: false
-    //! 门体是否被闩住。上锁与两个过渡态都算闩住——过渡期间锁舌正在动作，
-    //! 同样不允许扳门。
-    readonly property bool doorLatched: engine
-        ? (engine.doorModel.isLocked || engine.doorModel.isTransitioning) : false
-    //! 舱门最终是否敞开。DoorLockModel 只描述 PTC 门锁的上锁/解锁，没有门体
-    //! 开合量，所以开合由本地驱动，但无论哪种模式都以门锁为硬约束——闩住时
-    //! 必合门，避开“门已锁但仍敞着”的矛盾状态。
-    readonly property bool doorOpen: root.doorAuto
-        ? !root.doorLatched
-        : (root.doorOpenRequest && !root.doorLatched)
-    //! 闩住时逆带清掉手动请求，令解锁后不会自行弹开：开门是人的动作。
-    onDoorLatchedChanged: if (root.doorLatched) root.doorOpenRequest = false;
+    //! 舱门最终是否敞开。由 engine.doorOpenState 驱动（与 DOOR_1/DOOR_2 信号一致）。
+    readonly property bool doorOpen: engine ? engine.doorOpenState : false
 
     //! 初始与复位视角。原来的 38°/14° 偏斜得过多，正面看上去是歪的；收到接近
     //! 正视，只保留一点立体感。
@@ -133,7 +118,8 @@ Item {
     property real drumAngle: 0
     property real camAzimuth: root.homeAzimuth
     property real camElevation: root.homeElevation
-    property real camDistance: view3d.fitDistanceBuiltin
+    //! 初始相机距离：内置模型 fitDistance 的 1.3 倍，确保外部模型加载前也能看到整体
+    property real camDistance: view3d.fitDistanceBuiltin * 1.3
     property real lastX: 0
     property real lastY: 0
 
@@ -200,7 +186,7 @@ Item {
         case "run":   return engine.running;
         case "inlet": return engine.actuators.inletValveOpen;
         case "heat":  return engine.actuators.heaterOn;
-        case "lock":  return engine.doorModel.isLocked;
+        case "lock":  return engine.doorOpenState;  // 门锁指示灯改为门体开合状态
         default:      return false;
         }
     }
@@ -218,8 +204,8 @@ Item {
             return Qt.vector3d(w / 100, h / 100, d / 100);
         }
 
-        //! 画面充满度余量（透视下近处会比正交投影略大，留一成防下巴裁切）
-        readonly property real fitMargin: 1.1
+        //! 画面充满度余量（透视下近处会比正交投影略大，留三成余量防裁切并确保整体可见）
+        readonly property real fitMargin: 1.5
 
         /*!
             把尺寸为 w×h×d 的机身完整装进画面所需的相机进退。
@@ -293,9 +279,10 @@ Item {
         }
 
         // ---------------------------------------------------------
-        // 贴纸纹理（QML 绘制 → 纹理）
+        // 贴纸纹理（QML 绘制 → 纹理）—— 暂时屏蔽
         // ---------------------------------------------------------
 
+        /*
         //! 显示屏：自发光，绑定实时温度 / 转速 / 状态
         Texture {
             id: displayTex
@@ -467,7 +454,7 @@ Item {
             id: brandTex
             flipU: true
             sourceItem: StickerCanvas {
-                width: 340
+                width: 200
                 height: 100
 
                 Rectangle {
@@ -478,8 +465,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: "Hisense"
-                    color: "#3d4650"
-                    font.pixelSize: 52
+                    color: '#1edc2b'
+                    font.pixelSize: 45
                     font.bold: true
                     font.letterSpacing: 2
                 }
@@ -634,6 +621,7 @@ Item {
                 }
             }
         }
+        */
 
         // ---------------------------------------------------------
         // 灯光
@@ -839,17 +827,15 @@ Item {
                             // 重新加载会换掉整棵子树，旧的门体节点引用必须先作废
                             externalMachine.doorNode = null;
                             externalMachine.scanLoaded(glbLoader);
-                            // 模型比例因文件而异，加载完成后把相机退到刚好能看全的进退
-                            root.camDistance = externalMachine.fitDistance;
+                            // 模型比例因文件而异，加载完成后把相机退到能看全的进退（留额外 20% 余量）
+                            root.camDistance = externalMachine.fitDistance * 1.2;
                         }
                     }
                 }
             }
 
-            // ===== 外部模型上的贴纸 =====
-            // GLB 本身不带任何贴图，这里把程序化模型那套 Texture 复用过来，贴在包围
-            // 盒表面。stickerYaw 已扣掉整体朝向，再由 stickerFaceOffset 按 90° 步进换面，
-            // 偏移距离随之在深度/宽度间自动切换。
+            // ===== 外部模型上的贴纸 —— 暂时屏蔽 =====
+            /*
             Node {
                 id: glbStickers
                 visible: root.showExternalStickers
@@ -904,6 +890,7 @@ Item {
                     }
                 }
             }
+            */
         }
 
         // ===== 方案一：代码生成的程序化模型（保留，可随时切回）=====
@@ -1100,7 +1087,8 @@ Item {
                 }
             }
 
-            // ===== 正面贴纸 =====
+            // ===== 正面贴纸 —— 暂时屏蔽 =====
+            /*
             // 型号铭牌
             Model {
                 source: "#Rectangle"
@@ -1136,6 +1124,7 @@ Item {
                     roughness: 0.55
                 }
             }
+            */
 
             // ===== 洗涤剂抽屉 =====
             Node {
@@ -1488,7 +1477,8 @@ Item {
                     }
                 }
 
-                // 显示屏贴纸（自发光）
+                // 显示屏贴纸 —— 暂时屏蔽
+                /*
                 Model {
                     source: "#Rectangle"
                     scale: view3d.dim(230, 58, 1)
@@ -1498,6 +1488,7 @@ Item {
                         lighting: PrincipledMaterial.NoLighting
                     }
                 }
+                */
 
                 // 显示屏黑色边框
                 Model {
@@ -1511,7 +1502,8 @@ Item {
                     }
                 }
 
-                // 指示灯文字标签贴纸
+                // 指示灯文字标签贴纸 —— 暂时屏蔽
+                /*
                 Model {
                     source: "#Rectangle"
                     scale: view3d.dim(300, 34, 1)
@@ -1522,8 +1514,10 @@ Item {
                         roughness: 0.5
                     }
                 }
+                */
 
-                // 品牌铭牌贴纸
+                // 品牌铭牌贴纸 —— 暂时屏蔽
+                /*
                 Model {
                     source: "#Rectangle"
                     scale: view3d.dim(170, 50, 1)
@@ -1534,8 +1528,10 @@ Item {
                         roughness: 0.45
                     }
                 }
+                */
 
-                // 旋钮刻度盘贴纸
+                // 旋钮刻度盘贴纸 —— 暂时屏蔽
+                /*
                 Model {
                     source: "#Rectangle"
                     scale: view3d.dim(120, 120, 1)
@@ -1546,6 +1542,7 @@ Item {
                         roughness: 0.5
                     }
                 }
+                */
 
                 // 程序旋钮
                 Model {
@@ -1764,19 +1761,15 @@ Item {
 
         ToolButton {
             visible: root.doorAnimatable
-            label: root.doorAuto ? qsTr("门:自动") : qsTr("门:手动")
-            labelColor: root.doorAuto ? "#7fdcff" : "#8ab4c8"
-            onActivated: root.doorAuto = !root.doorAuto
-        }
-
-        ToolButton {
-            visible: root.doorAnimatable && !root.doorAuto
-            label: root.doorLatched ? qsTr("门已锁")
-                                    : (root.doorOpen ? qsTr("关门")
-                                                     : qsTr("开门"))
-            labelColor: root.doorLatched ? root.colorMuted : "#8ab4c8"
-            onActivated: if (!root.doorLatched)
-                             root.doorOpenRequest = !root.doorOpenRequest
+            label: root.doorOpen ? qsTr("关门") : qsTr("开门")
+            onActivated: {
+                if (root.engine) {
+                    if (root.doorOpen)
+                        root.engine.requestDoorClose();
+                    else
+                        root.engine.requestDoorOpen();
+                }
+            }
         }
 
         ToolButton {
@@ -1789,19 +1782,6 @@ Item {
             visible: root.useExternalModel
             label: root.externalZUp ? qsTr("Z 轴向上") : qsTr("Y 轴向上")
             onActivated: root.externalZUp = !root.externalZUp
-        }
-
-        ToolButton {
-            visible: root.useExternalModel
-            label: root.showExternalStickers ? qsTr("贴纸开") : qsTr("贴纸关")
-            onActivated: root.showExternalStickers = !root.showExternalStickers
-        }
-
-        ToolButton {
-            visible: root.useExternalModel && root.showExternalStickers
-            label: qsTr("贴纸换面")
-            onActivated: root.stickerFaceOffset =
-                             (root.stickerFaceOffset + 90) % 360
         }
     }
 

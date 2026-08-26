@@ -112,6 +112,13 @@ Rectangle {
             font.pixelSize: 12
             model: root.serial ? root.serial.availablePorts : []
             onActivated: if (root.serial) root.serial.portName = currentText
+            // 端口列表变化时自动选中第一个，避免用户忘记选择
+            onModelChanged: {
+                if (count > 0 && root.serial) {
+                    currentIndex = 0;
+                    root.serial.portName = textAt(0);
+                }
+            }
         }
 
         ToolButton {

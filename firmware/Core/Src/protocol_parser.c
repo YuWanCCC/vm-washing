@@ -129,7 +129,8 @@ static uint8_t handle_set_frequency(const uint8_t *payload, uint8_t len)
  *         [11]   进水阀
  *         [12]   排水泵
  *         [13]   加热器
- *         [14-15]保留
+ *         [14]   DOOR_1 (1=门开, 0=门关)
+ *         [15]   DOOR_2 (1=门关, 0=门开)
  * @note   数字量 4 路先合成位图再一次写入, 保证同步切换
  */
 static uint8_t handle_batch_set(const uint8_t *payload, uint8_t len)
@@ -162,6 +163,10 @@ static uint8_t handle_batch_set(const uint8_t *payload, uint8_t len)
     if (payload[12] != 0U) { bitmap |= (uint8_t)(1U << GPIO_OUT_DRAIN_PUMP); }
     if (payload[13] != 0U) { bitmap |= (uint8_t)(1U << GPIO_OUT_HEATER); }
     gpio_write_all_outputs(bitmap);
+
+    /* 门开关信号: payload[14]=DOOR_1(1=门开), payload[15]=DOOR_2(1=门关) */
+    /* 以 DOOR_1 为准设置门开关输出, DOOR_2 自动互补 */
+    gpio_set_door_output(payload[14] != 0U);
 
     return status;
 }
@@ -370,6 +375,7 @@ const proto_stats_t *protocol_get_stats(void)
 void protocol_enter_safe_state(void)
 {
     gpio_reset_all_outputs();
+    gpio_reset_door_output();
     pwm_stop_all();
     dac_reset_all();
 }

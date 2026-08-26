@@ -114,6 +114,7 @@ void SimulationEngine::reset()
     m_rinseDone = 0;
     m_drainNext = Idle;
     m_rinseFilling = false;
+    m_doorOpenState = false;
     transitionTo(Idle);
 
     emit elapsedTimeChanged();
@@ -169,7 +170,6 @@ void SimulationEngine::startWashProgram(const QString &programName)
     m_rinseDone = 0;
     m_drainNext = Idle;
     m_rinseFilling = false;
-    m_doorModel->requestLock();
     transitionTo(Fill);
 
     if (!m_running)
@@ -180,11 +180,28 @@ void SimulationEngine::abortWashProgram()
 {
     m_actuators->reset();
     stopMotor();
-    m_doorModel->requestUnlock();
     m_rinseDone = 0;
     m_drainNext = Idle;
     m_rinseFilling = false;
+    m_doorOpenState = false;
+    emit doorStateChanged();
     transitionTo(Idle);
+}
+
+void SimulationEngine::requestDoorOpen()
+{
+    if (m_doorOpenState)
+        return;
+    m_doorOpenState = true;
+    emit doorStateChanged();
+}
+
+void SimulationEngine::requestDoorClose()
+{
+    if (!m_doorOpenState)
+        return;
+    m_doorOpenState = false;
+    emit doorStateChanged();
 }
 
 bool SimulationEngine::parseProgramFromScenario(const QVariantMap &scenario, WashProgram *program) const
@@ -420,11 +437,11 @@ void SimulationEngine::updateAutomaticMode()
 
 void SimulationEngine::updateFillState()
 {
-    // 门锁未到位前不进水（对应场景第一步“门锁上锁”）
-    if (!m_doorModel->isLocked()) {
-        m_actuators->setInletValveOpen(false);
+    // 注水状态直接开启进水阀
+    if (!m_actuators->inletValveOpen()) {
+        m_actuators->setInletValveOpen(true);
         if (m_stateTimer > kDoorTimeoutSec) {
-            emit warning(tr("门锁上锁超时，无法开始注水"));
+            emit warning(tr("注水超时"));
             m_stateTimer = 0.0;
         }
         return;
@@ -572,7 +589,7 @@ void SimulationEngine::transitionTo(SimState newState)
     case Fill:
         m_actuators->setDrainPumpOn(false);
         m_actuators->setHeaterOn(false);
-        m_actuators->setInletValveOpen(m_doorModel->isLocked());
+        m_actuators->setInletValveOpen(true);
         stopMotor();
         break;
     case Heat:
@@ -607,7 +624,6 @@ void SimulationEngine::transitionTo(SimState newState)
     case Complete:
         m_actuators->reset();
         stopMotor();
-        m_doorModel->requestUnlock();
         break;
     }
 
@@ -777,6 +793,16 @@ ActuatorModels *SimulationEngine::actuators() const
 ScenarioManager *SimulationEngine::scenarioManager() const
 {
     return m_scenarios;
+}
+
+bool SimulationEngine::doorOpenState() const
+{
+    return m_doorOpenState;
+}
+
+QString SimulationEngine::doorStateText() const
+{
+    return m_doorOpenState ? QStringLiteral("门已开") : QStringLiteral("门已关");
 }
 
 } // namespace whm

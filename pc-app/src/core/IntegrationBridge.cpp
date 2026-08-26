@@ -20,7 +20,7 @@ namespace {
 //
 // 固件(REPORT_INPUT relayBitmap): bit0 门锁, bit1 进水阀, bit2 排水泵, bit3 加热器
 // PC侧(ActuatorModels::toBitmask): bit0 进水阀, bit1 排水泵, bit2 加热器
-// 桥接层负责在两种位序之间转换；门锁不参与 ActuatorModels（由 DoorLockModel 单独建模）。
+// 桥接层负责在两种位序之间转换；门锁不参与 ActuatorModels。
 // ---------------------------------------------------------------------------
 
 //! 固件继电器位图 → ActuatorModels 位图
@@ -190,7 +190,6 @@ BatchSetData IntegrationBridge::buildBatchSet()
     double waterFreq = m_engine->waterModel()->sensorFrequency();
     double ntcOhm = m_engine->tempModel()->ntcResistance();
     double hallFreq = m_engine->motorModel()->hallFrequency();
-    double doorLevel = m_engine->doorModel()->isLocked() ? 1.0 : 0.0;
 
     // 故障注入：发送前对传感器输出应用故障效果，模拟真实故障工况
     if (m_faultInjector != nullptr) {
@@ -199,7 +198,6 @@ BatchSetData IntegrationBridge::buildBatchSet()
         waterFreq = m_faultInjector->applyFault(FaultInjector::WaterLevelSensor, waterFreq, dt);
         ntcOhm = m_faultInjector->applyFault(FaultInjector::TempSensor, ntcOhm, dt);
         hallFreq = m_faultInjector->applyFault(FaultInjector::MotorHall, hallFreq, dt);
-        doorLevel = m_faultInjector->applyFault(FaultInjector::DoorLockSignal, doorLevel, dt);
     }
 
     // 频率类输出钳位到协议可表达的合理范围（短路故障拉满为 100kHz）
@@ -207,14 +205,20 @@ BatchSetData IntegrationBridge::buildBatchSet()
     data.ntcDacValue = ntcToDac(ntcOhm);
     data.hallFreq = static_cast<uint32_t>(qBound(0.0, hallFreq, 100000.0));
 
-    // 门锁与执行器开关量
-    data.doorLock = doorLevel > 0.5 ? 1 : 0;
+    // 执行器开关量
+    data.doorLock = 0;  // 门锁信号不再使用，固定为 0
 
     // ActuatorModels 位序: bit0 进水阀 / bit1 排水泵 / bit2 加热器
     const quint8 actuatorMask = m_engine->actuators()->toBitmask();
     data.inletValve = (actuatorMask & 0x01) ? 1 : 0;
     data.drainPump = (actuatorMask & 0x02) ? 1 : 0;
     data.heater = (actuatorMask & 0x04) ? 1 : 0;
+
+    // 门开关信号（独立链路：模型输出 → STM32 → 主控板）
+    // DOOR_1: 高电平=门开, DOOR_2: 高电平=门关（互补）
+    const bool doorIsOpen = m_engine->doorOpenState();
+    data.doorSignal1 = doorIsOpen ? 1 : 0;
+    data.doorSignal2 = doorIsOpen ? 0 : 1;
 
     return data;
 }
@@ -238,7 +242,7 @@ void IntegrationBridge::recordChannels()
     m_recorder->record(QStringLiteral("water_sensor_hz"), m_engine->waterModel()->sensorFrequency(), ts);
     m_recorder->record(QStringLiteral("ntc_ohm"), m_engine->tempModel()->ntcResistance(), ts);
     m_recorder->record(QStringLiteral("hall_hz"), m_engine->motorModel()->hallFrequency(), ts);
-    m_recorder->record(QStringLiteral("door_lock"), m_engine->doorModel()->isLocked() ? 1.0 : 0.0, ts);
+    m_recorder->record(QStringLiteral("door_open_state"), m_engine->doorOpenState() ? 1.0 : 0.0, ts);
 }
 
 void IntegrationBridge::applyFeedback(const ReportInputData &data)

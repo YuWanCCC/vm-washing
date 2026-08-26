@@ -51,6 +51,10 @@ class SimulationEngine : public QObject
     Q_PROPERTY(ActuatorModels* actuators READ actuators CONSTANT)
     Q_PROPERTY(ScenarioManager* scenarios READ scenarioManager CONSTANT)
 
+    //! 门体开合状态（独立于门锁，描述门体物理开/关）
+    Q_PROPERTY(bool doorOpenState READ doorOpenState NOTIFY doorStateChanged)
+    Q_PROPERTY(QString doorStateText READ doorStateText NOTIFY doorStateChanged)
+
 public:
     //! 仿真状态（洗衣周期）
     enum SimState {
@@ -84,6 +88,11 @@ public:
     //! 中止自动洗衣程序，回到待机（执行器全断、门锁解锁）
     Q_INVOKABLE void abortWashProgram();
 
+    //! 手动开门（门体打开，DOOR_1 输出高 / DOOR_2 输出低）
+    Q_INVOKABLE void requestDoorOpen();
+    //! 手动物关门（门体关闭，DOOR_1 输出低 / DOOR_2 输出高）
+    Q_INVOKABLE void requestDoorClose();
+
     //! 加载配置参数（default_params.json 格式），空路径表示使用默认 config 目录
     Q_INVOKABLE void loadConfig(const QString &configPath);
 
@@ -99,6 +108,10 @@ public:
     double timeScale() const;
     void setTimeScale(double scale);
     QString programName() const;
+    //! 门体是否敞开
+    bool doorOpenState() const;
+    //! 门状态文本
+    QString doorStateText() const;
     //! 当前处于第几次漂洗（从 1 开始，未漂洗时为 0）
     int rinseIndex() const;
 
@@ -127,6 +140,8 @@ signals:
     //! 保护动作/异常提示（溢流、加热超时等）
     void warning(const QString &message);
     void configLoaded(const QString &configPath);
+    //! 门体开合状态变化
+    void doorStateChanged();
 
 private:
     //! 自动模式参数
@@ -189,6 +204,8 @@ private:
     int m_rinseDone = 0;            //!< 已完成的漂洗次数
     SimState m_drainNext = Idle;    //!< 排水完成后进入的状态
     bool m_rinseFilling = false;    //!< 漂洗子阶段：true 注水中，false 搅拌中
+
+    bool m_doorOpenState = false;   //!< 门体开合状态：true=开, false=关
 };
 
 } // namespace whm

@@ -18,8 +18,12 @@ ApplicationWindow {
     readonly property color colorBackground: "#2b2b2b"
     readonly property color colorAccent: "#4fc3f7"
 
-    //! 数据监控面板目标高度（折叠时仅留标题栏）
-    property real monitorHeight: dataMonitor.expanded ? 260 : 48
+    //! 底部面板当前选中的标签页（0=数据监控, 1=串口调试）
+    property int bottomTab: 0
+    //! 底部面板是否展开
+    property bool bottomExpanded: true
+    //! 底部面板目标高度
+    property real monitorHeight: bottomExpanded ? 260 : 40
 
     width: 1280
     height: 800
@@ -92,6 +96,7 @@ ApplicationWindow {
     // ------------------------------------------------------------------
     Shortcut {
         sequence: "Space"
+        context: Qt.ApplicationShortcut
         onActivated: {
             if (simEngine.running)
                 simEngine.stop();
@@ -102,12 +107,14 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "R"
+        context: Qt.ApplicationShortcut
         onActivated: simEngine.reset()
     }
 
     Shortcut {
         sequence: "D"
-        onActivated: dataMonitor.expanded = !dataMonitor.expanded
+        context: Qt.ApplicationShortcut
+        onActivated: root.bottomExpanded = !root.bottomExpanded
     }
 
     // ------------------------------------------------------------------
@@ -153,13 +160,152 @@ ApplicationWindow {
             }
         }
 
-        DataMonitor {
-            id: dataMonitor
-
+        // ---------------------------------------------------------------
+        // 底部标签页面板：数据监控 / 串口调试
+        // ---------------------------------------------------------------
+        Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: root.monitorHeight
-            Layout.minimumHeight: 48
-            engine: simEngine
+            Layout.minimumHeight: 40
+            color: "#2b2b2b"
+            radius: 8
+
+            Behavior on Layout.preferredHeight {
+                NumberAnimation { duration: 180; easing.type: Easing.InOutQuad }
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 0
+                spacing: 0
+
+                // 标签栏
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    color: "#333333"
+                    radius: 8
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 4
+
+                        // 展开/折叠按钮
+                        Rectangle {
+                            Layout.preferredWidth: 28
+                            Layout.preferredHeight: 28
+                            radius: 6
+                            color: expandArea.containsMouse ? "#3a3a3a" : "transparent"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.bottomExpanded ? "\u25BE" : "\u25B8"
+                                color: root.colorAccent
+                                font.pixelSize: 16
+                            }
+
+                            MouseArea {
+                                id: expandArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.bottomExpanded = !root.bottomExpanded
+                            }
+                        }
+
+                        // 标签页按钮
+                        Repeater {
+                            model: [qsTr("数据监控"), qsTr("串口调试")]
+
+                            Rectangle {
+                                Layout.preferredHeight: 28
+                                Layout.fillWidth: false
+                                implicitWidth: tabText.implicitWidth + 20
+                                radius: 6
+                                color: root.bottomTab === index ? root.colorAccent : "transparent"
+
+                                Text {
+                                    id: tabText
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    font.pixelSize: 13
+                                    font.bold: root.bottomTab === index
+                                    color: root.bottomTab === index ? "#10171d" : "#9e9e9e"
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.bottomTab = index;
+                                        root.bottomExpanded = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        // 串口调试页专用：消息计数
+                        Text {
+                            visible: root.bottomTab === 1
+                            text: serialDebug.logLines.length + " 条"
+                            color: "#9e9e9e"
+                            font.pixelSize: 11
+                        }
+
+                        // 串口调试页专用：清空按钮
+                        Rectangle {
+                            visible: root.bottomTab === 1
+                            Layout.preferredWidth: clearText.implicitWidth + 12
+                            Layout.preferredHeight: 24
+                            radius: 4
+                            color: clearArea.containsMouse ? "#2a3a4a" : "transparent"
+
+                            Text {
+                                id: clearText
+                                anchors.centerIn: parent
+                                text: qsTr("清空")
+                                color: "#4fc3f7"
+                                font.pixelSize: 12
+                            }
+
+                            MouseArea {
+                                id: clearArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: serialDebug.logLines = []
+                            }
+                        }
+                    }
+                }
+
+                // 面板内容区
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: root.bottomExpanded
+                    clip: true
+
+                    DataMonitor {
+                        id: dataMonitor
+                        anchors.fill: parent
+                        engine: simEngine
+                        expanded: true
+                        visible: root.bottomTab === 0
+                    }
+
+                    SerialDebugPanel {
+                        id: serialDebug
+                        anchors.fill: parent
+                        serial: serialManager
+                        visible: root.bottomTab === 1
+                    }
+                }
+            }
         }
     }
 
@@ -216,7 +362,7 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 14
-        text: qsTr("Space 暂停/继续    R 重置    D 折叠监控")
+        text: qsTr("Space 暂停/继续    R 重置    D 折叠/展开")
         color: "#6f7780"
         font.pixelSize: 12
         z: 50

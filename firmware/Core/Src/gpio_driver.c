@@ -81,6 +81,12 @@ void gpio_init(void)
     gpio_pin_mode(PIN_LED_PORT, PIN_LED, GPIO_MODE_OUT_PP_50M);
     gpio_pin_set(PIN_LED_PORT, PIN_LED);
 
+    /* 门开关信号输出 PC0/PC1, 推挽输出, 初始为关门状态(DOOR_1低/DOOR_2高) */
+    PIN_DOOR_OUT_PORT->BRR = (1UL << PIN_DOOR_1);   /* PC0 = 0 */
+    PIN_DOOR_OUT_PORT->BSRR = (1UL << PIN_DOOR_2);  /* PC1 = 1 */
+    gpio_pin_mode(PIN_DOOR_OUT_PORT, PIN_DOOR_1, GPIO_MODE_OUT_PP_50M);
+    gpio_pin_mode(PIN_DOOR_OUT_PORT, PIN_DOOR_2, GPIO_MODE_OUT_PP_50M);
+
     g_in_stable  = gpio_read_raw_inputs();
     g_in_last    = g_in_stable;
     g_in_counter = 0U;
@@ -190,4 +196,25 @@ void gpio_set_led(bool on)
 void gpio_toggle_led(void)
 {
     gpio_pin_toggle(PIN_LED_PORT, PIN_LED);
+}
+
+/**
+ * @brief  设置门开关信号输出
+ * @param  door_open  true=开门(DOOR_1高/DOOR_2低), false=关门(DOOR_1低/DOOR_2高)
+ */
+void gpio_set_door_output(bool door_open)
+{
+    if (door_open) {
+        /* DOOR_1 = HIGH (门开), DOOR_2 = LOW */
+        PIN_DOOR_OUT_PORT->BSRR = (1UL << PIN_DOOR_1) | (1UL << (PIN_DOOR_2 + 16U));
+    } else {
+        /* DOOR_1 = LOW, DOOR_2 = HIGH (门关) */
+        PIN_DOOR_OUT_PORT->BSRR = (1UL << PIN_DOOR_2) | (1UL << (PIN_DOOR_1 + 16U));
+    }
+}
+
+/** @brief 门开关输出复位(默认关门) */
+void gpio_reset_door_output(void)
+{
+    gpio_set_door_output(false);
 }

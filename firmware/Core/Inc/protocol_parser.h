@@ -43,7 +43,7 @@ extern "C" {
 #define CMD_SET_DIGITAL         0x02U   /*!< PC->MCU [端口1B][状态1B]        */
 #define CMD_SET_FREQUENCY       0x03U   /*!< PC->MCU [通道1B][频率4B]        */
 #define CMD_READ_ALL            0x04U   /*!< PC->MCU 无载荷                  */
-#define CMD_BATCH_SET           0x05U   /*!< PC->MCU 16B 批量数据            */
+#define CMD_BATCH_SET           0x05U   /*!< PC->MCU 16B 批量数据(含门开关) */
 #define CMD_REPORT_INPUT        0x81U   /*!< MCU->PC 16B 输入数据            */
 #define CMD_ACK                 0x82U   /*!< MCU->PC [对应CMD1B][状态1B]     */
 #define CMD_HEARTBEAT           0xFEU   /*!< 双向, 无载荷                    */

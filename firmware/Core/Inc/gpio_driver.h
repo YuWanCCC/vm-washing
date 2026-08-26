@@ -83,6 +83,16 @@ void gpio_set_led(bool on);
 /** @brief 状态指示灯翻转 */
 void gpio_toggle_led(void);
 
+/**
+ * @brief  设置门开关信号输出 (DOOR_1 / DOOR_2)
+ * @note   DOOR_1 高=门开, DOOR_2 高=门关, 两路互补
+ * @param  door_open  true=开门(DOOR_1高/DOOR_2低), false=关门(DOOR_1低/DOOR_2高)
+ */
+void gpio_set_door_output(bool door_open);
+
+/** @brief 门开关输出复位(默认关门状态: DOOR_1低/DOOR_2高) */
+void gpio_reset_door_output(void);
+
 #ifdef __cplusplus
 }
 #endif

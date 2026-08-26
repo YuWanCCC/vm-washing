@@ -104,6 +104,8 @@ struct BatchSetData
     uint8_t inletValve      = 0;   //!< 0=关, 1=开            偏移 11
     uint8_t drainPump       = 0;   //!< 0=停, 1=转            偏移 12
     uint8_t heater          = 0;   //!< 0=关, 1=开            偏移 13
+    uint8_t doorSignal1     = 0;   //!< DOOR_1: 1=门开, 0=门关 偏移 14
+    uint8_t doorSignal2     = 0;   //!< DOOR_2: 1=门关, 0=门开 偏移 15
 };
 
 //! REPORT_INPUT 载荷（16B，小端）

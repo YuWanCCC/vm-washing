@@ -34,8 +34,7 @@ public:
     enum Channel {
         WaterLevelSensor,  //!< 水位传感器（频率输出）
         TempSensor,        //!< NTC 温度传感器（阻值输出）
-        MotorHall,         //!< Hall 转速传感器（频率输出）
-        DoorLockSignal     //!< 门锁信号（电平 0/1）
+        MotorHall          //!< Hall 转速传感器（频率输出）
     };
     Q_ENUM(Channel)
 

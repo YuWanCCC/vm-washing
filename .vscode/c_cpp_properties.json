@@ -1,0 +1,36 @@
+{
+  "configurations": [
+    {
+      "name": "pc-app (MinGW)",
+      "compileCommands": "${workspaceFolder}/build/mingw-debug/compile_commands.json",
+      "compilerPath": "D:/Qt/Tools/mingw1120_64/bin/g++.exe",
+      "intelliSenseMode": "windows-gcc-x64",
+      "cStandard": "c17",
+      "cppStandard": "c++17"
+    },
+    {
+      "name": "firmware (STM32)",
+      "compilerPath": "D:/arm-gnu-toolchain-14.3.rel1-mingw-w64-i686-arm-none-eabi/arm-gnu-toolchain-14.3.rel1-mingw-w64-i686-arm-none-eabi/bin/arm-none-eabi-gcc.exe",
+      "intelliSenseMode": "gcc-arm",
+      "cStandard": "c99",
+      "cppStandard": "c++14",
+      "compileCommands": "${workspaceFolder}/build/fw-debug/compile_commands.json",
+      "includePath": [
+        "${workspaceFolder}/firmware/Core/Inc"
+      ],
+      "defines": [
+        "STM32F103xE",
+        "STM32F10X_HD"
+      ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}/firmware/Core/Inc",
+          "${workspaceFolder}/firmware/Core/Src",
+          "${workspaceFolder}/firmware/startup"
+        ],
+        "limitSymbolsToIncludedHeaders": false
+      }
+    }
+  ],
+  "version": 4
+}

@@ -26,7 +26,7 @@ Item {
     //! 通道名称，顺序与 FaultInjector.Channel 枚举值一致
     readonly property var channelNames: [
         qsTr("水位传感器"), qsTr("NTC温度传感器"),
-        qsTr("Hall转速传感器"), qsTr("门锁信号")
+        qsTr("Hall转速传感器")
     ]
     //! 故障类型名称，顺序与 FaultInjector.FaultType 枚举值一致
     readonly property var faultNames: [

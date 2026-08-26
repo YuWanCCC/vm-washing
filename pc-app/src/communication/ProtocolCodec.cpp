@@ -136,7 +136,8 @@ QByteArray ProtocolCodec::encodeReadAll()
  * \brief 组装 BATCH_SET 载荷(16B, 小端)
  *
  * [0-3] 水位频率 [4-5] NTC DAC [6-9] Hall 频率
- * [10] 门锁 [11] 进水阀 [12] 排水泵 [13] 加热器 [14-15] 保留
+ * [10] 门锁 [11] 进水阀 [12] 排水泵 [13] 加热器
+ * [14] DOOR_1 (1=门开) [15] DOOR_2 (1=门关)
  */
 QByteArray ProtocolCodec::encodeBatchSet(const BatchSetData &data)
 {
@@ -150,7 +151,8 @@ QByteArray ProtocolCodec::encodeBatchSet(const BatchSetData &data)
     payload.append(static_cast<char>(data.inletValve ? 1 : 0));
     payload.append(static_cast<char>(data.drainPump ? 1 : 0));
     payload.append(static_cast<char>(data.heater ? 1 : 0));
-    payload.append(2, '\0');   // 保留 2B
+    payload.append(static_cast<char>(data.doorSignal1 ? 1 : 0));
+    payload.append(static_cast<char>(data.doorSignal2 ? 1 : 0));
 
     return buildFrame(CommandId::BATCH_SET, payload);
 }

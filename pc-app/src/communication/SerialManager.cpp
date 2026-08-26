@@ -6,6 +6,40 @@
 
 namespace whm {
 
+/* =========================================================================
+ * 调试辅助
+ * ========================================================================= */
+
+QString SerialManager::formatHex(const QByteArray &data, int maxBytes)
+{
+    if (data.isEmpty())
+        return QStringLiteral("(empty)");
+    QString hex;
+    const int limit = qMin(data.size(), maxBytes);
+    for (int i = 0; i < limit; ++i) {
+        if (i > 0) hex += QChar(' ');
+        hex += QString::number(static_cast<uint8_t>(data.at(i)), 16).rightJustified(2, QChar('0')).toUpper();
+    }
+    if (data.size() > maxBytes)
+        hex += QStringLiteral(" ...");
+    return hex;
+}
+
+QString SerialManager::commandName(uint8_t cmd)
+{
+    switch (static_cast<CommandId>(cmd)) {
+    case CommandId::SET_ANALOG:    return QStringLiteral("SET_ANALOG");
+    case CommandId::SET_DIGITAL:   return QStringLiteral("SET_DIGITAL");
+    case CommandId::SET_FREQUENCY: return QStringLiteral("SET_FREQUENCY");
+    case CommandId::READ_ALL:      return QStringLiteral("READ_ALL");
+    case CommandId::BATCH_SET:     return QStringLiteral("BATCH_SET");
+    case CommandId::REPORT_INPUT:  return QStringLiteral("REPORT_INPUT");
+    case CommandId::ACK:           return QStringLiteral("ACK");
+    case CommandId::HEARTBEAT:     return QStringLiteral("HEARTBEAT");
+    default:                       return QStringLiteral("CMD_0x%1").arg(cmd, 2, 16, QChar('0')).toUpper();
+    }
+}
+
 SerialManager::SerialManager(QObject *parent)
     : QObject(parent)
     , m_serial(new QSerialPort(this))
@@ -22,10 +56,15 @@ SerialManager::SerialManager(QObject *parent)
     connect(m_reconnectTimer, &QTimer::timeout, this, &SerialManager::onReconnectTimer);
 
     // 任何有效帧都视为链路存活证据，而不仅仅是心跳回复
-    connect(m_codec, &ProtocolCodec::frameReceived, this, [this](const ProtocolFrame &) {
+    connect(m_codec, &ProtocolCodec::frameReceived, this, [this](const ProtocolFrame &frame) {
         ++m_rxCount;
         refreshLiveness();
         emit statsChanged();
+        // 接收帧调试摘要
+        emit debugMessage(QStringLiteral("[RX] %1  len=%2  payload=%3")
+                          .arg(commandName(static_cast<uint8_t>(frame.command)))
+                          .arg(frame.payload.size())
+                          .arg(formatHex(frame.payload)));
     });
     connect(m_codec, &ProtocolCodec::reportInputReceived, this, &SerialManager::dataReceived);
     connect(m_codec, &ProtocolCodec::ackReceived, this, &SerialManager::ackReceived);
@@ -33,6 +72,7 @@ SerialManager::SerialManager(QObject *parent)
     connect(m_codec, &ProtocolCodec::parseError, this, [this](const QString &error) {
         countError();
         emit errorOccurred(error);
+        emit debugMessage(QStringLiteral("[ERR] 解析失败: %1").arg(error));
     });
 
     refreshPorts();
@@ -57,11 +97,14 @@ void SerialManager::connectPort()
 
     if (m_portName.isEmpty()) {
         emit errorOccurred(tr("未指定串口号"));
+        emit debugMessage(QStringLiteral("[ERR] 未指定串口号，无法连接"));
         setState(Error);
         return;
     }
 
     setState(Connecting);
+    emit debugMessage(QStringLiteral("[CON] 正在打开 %1 @ %2")
+                      .arg(m_portName).arg(m_baudRate));
 
     m_serial->setPortName(m_portName);
     m_serial->setBaudRate(m_baudRate);
@@ -74,6 +117,7 @@ void SerialManager::connectPort()
         const QString reason = tr("打开串口 %1 失败：%2").arg(m_portName, m_serial->errorString());
         countError();
         emit errorOccurred(reason);
+        emit debugMessage(QStringLiteral("[ERR] %1").arg(reason));
         setState(Error);
         // 首次打开失败也纳入自动重连，便于设备上电顺序不确定时自愈
         m_autoReconnect = true;
@@ -90,6 +134,8 @@ void SerialManager::connectPort()
     m_heartbeatTimer->start();
 
     setState(Connected);
+    emit debugMessage(QStringLiteral("[CON] 已连接 %1 @ %2")
+                      .arg(m_portName).arg(m_baudRate));
 
     // 连接建立后立即索取一次全量输入，避免界面等待首个上报周期
     sendReadAll();
@@ -107,6 +153,7 @@ void SerialManager::disconnectPort()
     }
     m_codec->reset();
 
+    emit debugMessage(QStringLiteral("[CON] 已断开 %1").arg(m_portName));
     setState(Disconnected);
 }
 
@@ -139,6 +186,7 @@ void SerialManager::handleLinkFailure(const QString &reason)
 
     countError();
     emit errorOccurred(reason);
+    emit debugMessage(QStringLiteral("[ERR] 链路异常: %1").arg(reason));
     setState(Error);
 
     if (m_autoReconnect && !m_reconnectTimer->isActive()) {
@@ -249,6 +297,16 @@ void SerialManager::sendRaw(const QByteArray &frame)
 
     ++m_txCount;
     emit statsChanged();
+
+    // 发送帧调试摘要：提取 CMD 和 LEN
+    if (frame.size() >= 3) {
+        const uint8_t cmd = static_cast<uint8_t>(frame.at(1));
+        const uint8_t len = static_cast<uint8_t>(frame.at(2));
+        // 载荷从 frame[3] 开始，长度为 len
+        const QByteArray payload = frame.mid(3, len);
+        emit debugMessage(QStringLiteral("[TX] %1  len=%2  payload=%3")
+                          .arg(commandName(cmd)).arg(len).arg(formatHex(payload)));
+    }
 }
 
 void SerialManager::sendBatchSet(const BatchSetData &data)

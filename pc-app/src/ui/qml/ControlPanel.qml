@@ -590,36 +590,46 @@ Rectangle {
                     onRequestChange: function(on) { root.engine.actuators.heaterOn = on; }
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: root.colorBorder
-                }
-
+                // 门体开关控制（控制 DOOR_1/DOOR_2 信号输出）
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
 
                     Text {
-                        text: qsTr("门锁")
+                        text: qsTr("门体")
                         color: root.colorFg
                         font.pixelSize: 14
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 10
+                        Layout.preferredHeight: 10
+                        radius: 5
+                        color: root.engine && root.engine.doorOpenState ? "#66bb6a" : "#555555"
+                    }
+
+                    Text {
+                        text: root.engine ? root.engine.doorStateText : "-"
+                        color: root.colorMuted
+                        font.pixelSize: 12
                     }
 
                     Item { Layout.fillWidth: true }
 
                     Button {
-                        text: qsTr("锁定")
+                        text: qsTr("开门")
                         font.pixelSize: 12
-                        enabled: root.engine && !root.engine.doorModel.isLocked
-                        onClicked: root.engine.doorModel.requestLock()
+                        highlighted: root.engine && root.engine.doorOpenState
+                        enabled: root.engine && !root.engine.doorOpenState
+                        onClicked: root.engine.requestDoorOpen()
                     }
 
                     Button {
-                        text: qsTr("解锁")
+                        text: qsTr("关门")
                         font.pixelSize: 12
-                        enabled: root.engine && root.engine.doorModel.state !== DoorLockModel.Unlocked
-                        onClicked: root.engine.doorModel.requestUnlock()
+                        highlighted: root.engine && !root.engine.doorOpenState
+                        enabled: root.engine && root.engine.doorOpenState
+                        onClicked: root.engine.requestDoorClose()
                     }
                 }
 
@@ -709,20 +719,11 @@ Rectangle {
                         Layout.preferredWidth: 14
                         Layout.preferredHeight: 14
                         radius: 7
-                        color: {
-                            if (!root.engine)
-                                return "#555555";
-                            switch (root.engine.doorModel.state) {
-                            case DoorLockModel.Locked: return "#66bb6a";
-                            case DoorLockModel.Locking:
-                            case DoorLockModel.Unlocking: return "#ffca28";
-                            default: return "#9e9e9e";
-                            }
-                        }
+                        color: root.engine && root.engine.doorOpenState ? "#66bb6a" : "#555555"
                     }
 
                     Text {
-                        text: qsTr("门锁")
+                        text: qsTr("门体")
                         color: root.colorMuted
                         font.pixelSize: 12
                     }
@@ -730,14 +731,7 @@ Rectangle {
                     Item { Layout.fillWidth: true }
 
                     Text {
-                        text: {
-                            if (!root.engine)
-                                return "-";
-                            var door = root.engine.doorModel;
-                            return door.isTransitioning
-                                    ? door.stateText + " " + (door.progress * 100).toFixed(0) + "%"
-                                    : door.stateText;
-                        }
+                        text: root.engine ? root.engine.doorStateText : "-"
                         color: root.colorFg
                         font.pixelSize: 14
                         font.bold: true

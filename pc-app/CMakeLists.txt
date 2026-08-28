@@ -110,6 +110,25 @@ add_custom_command(TARGET ${APP_TARGET} POST_BUILD
         "$<TARGET_FILE_DIR:${APP_TARGET}>/${APP_MACHINE_MODEL_DEST}"
     COMMENT "Copying washing machine GLB model")
 
+# ---------------------------------------------------------------------------
+# Qt 依赖部署：使用 windeployqt 将 Qt DLL、QML 插件等直接复制到可执行文件旁，
+# 使构建产物可直接双击运行，无需手动配置 PATH。
+# ---------------------------------------------------------------------------
+find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_INSTALL_PREFIX}/bin")
+
+if(WINDEPLOYQT_EXECUTABLE)
+    add_custom_command(TARGET ${APP_TARGET} POST_BUILD
+        COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+            --no-translations
+            --no-system-d3d-compiler
+            --no-opengl-sw
+            "$<TARGET_FILE:${APP_TARGET}>"
+        COMMENT "Deploying Qt dependencies via windeployqt"
+    )
+else()
+    message(WARNING "windeployqt not found - exe will need Qt DLLs in PATH")
+endif()
+
 install(TARGETS ${APP_TARGET}
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

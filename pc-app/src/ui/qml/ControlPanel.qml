@@ -81,14 +81,15 @@ Rectangle {
         motor.motorPwmDuty = Math.max(0, Math.min(1, duty));
     }
 
-    // MAT 状态缓存
-    property int matWorkStatus: 0
-    property int matFaultCode:  0
-    property int matMotorRpm:   0
-    property int matWaterLevel: 0
-    property int matWaterTemp:  0
-    property int matRemainMin:  0
-    property int matRemainSec:  0
+    // MAT 状态缓存（从 67 字节 rawSdu 解析）
+    property var matSdu: null          //!< 原始 67 字节 SDU
+    property int matProtocolVer: 0
+    property int matMachineType: 0
+    property int matMotorSpeed: 0      //!< 有符号转速
+    property int matTimeToEnd: 0       //!< 剩余时间（分钟）
+    property int matErrorCode: 0
+    property int matLoad: 0
+    property int matHumidity: 0
     property int matCtrlB1: 0
     property int matCtrlB2: 0
 
@@ -99,16 +100,19 @@ Rectangle {
 
     Connections {
         target: root.mat
-        function onStatusReceived(workStatus, faultCode, motorRpm,
-                                  waterLevel, waterTemp,
-                                  remainMin, remainSec, rawSdu) {
-            root.matWorkStatus = workStatus
-            root.matFaultCode  = faultCode
-            root.matMotorRpm   = motorRpm
-            root.matWaterLevel = waterLevel
-            root.matWaterTemp  = waterTemp
-            root.matRemainMin  = remainMin
-            root.matRemainSec  = remainSec
+        function onSduRevisionChanged() {
+            var hex = root.mat.lastSduHex
+            if (!hex || hex.length < 2) return  // 至少 1 字节
+            // 从 hex 字符串解析指定字节: byte[n] = hex.substring(n*2, n*2+2)
+            function b(n) { return (n * 2 + 2 <= hex.length) ? parseInt(hex.substring(n * 2, n * 2 + 2), 16) : 0 }
+            root.matProtocolVer = b(0)
+            root.matMachineType = b(1)
+            root.matMotorSpeed  = (b(12) << 8) | b(11)
+            if (root.matMotorSpeed > 32767) root.matMotorSpeed -= 65536
+            root.matTimeToEnd = (b(25) << 8) | b(24)
+            root.matErrorCode = b(47)
+            root.matLoad      = b(10)
+            root.matHumidity  = (b(6) << 8) | b(5)
         }
     }
 
@@ -982,50 +986,50 @@ Rectangle {
                     Layout.fillWidth: true
                     columns: 2; rowSpacing: 6; columnSpacing: 8
 
-                    Text { text: qsTr("工作状态"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text { text: qsTr("协议版本"); color: root.colorMuted; font.pixelSize: 13 }
                     Text {
                         Layout.alignment: Qt.AlignRight
-                        text: "0x" + root.matWorkStatus.toString(16).toUpperCase().padStart(2, '0')
+                        text: root.matProtocolVer
                         color: root.colorFg; font.pixelSize: 14; font.bold: true
                     }
 
-                    Text { text: qsTr("故障码"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text { text: qsTr("机器类型"); color: root.colorMuted; font.pixelSize: 13 }
                     Text {
                         Layout.alignment: Qt.AlignRight
-                        text: root.matFaultCode === 0 ? qsTr("正常") : ("E" + root.matFaultCode)
-                        color: root.matFaultCode === 0 ? "#66bb6a" : "#ef5350"
-                        font.pixelSize: 14; font.bold: true
+                        text: { switch (root.matMachineType) {
+                            case 1: return qsTr("滚筒");
+                            case 2: return qsTr("波轮");
+                            case 3: return qsTr("干衣机");
+                            default: return root.matMachineType; } }
+                        color: root.colorFg; font.pixelSize: 14
                     }
 
                     Text { text: qsTr("电机转速"); color: root.colorMuted; font.pixelSize: 13 }
                     Text {
                         Layout.alignment: Qt.AlignRight
-                        text: root.matMotorRpm + " r/min"
-                        color: root.colorFg; font.pixelSize: 14
-                    }
-
-                    Text { text: qsTr("水位"); color: root.colorMuted; font.pixelSize: 13 }
-                    Text {
-                        Layout.alignment: Qt.AlignRight
-                        text: root.matWaterLevel + " mm"
-                        color: root.colorFg; font.pixelSize: 14
-                    }
-
-                    Text { text: qsTr("水温"); color: root.colorMuted; font.pixelSize: 13 }
-                    Text {
-                        Layout.alignment: Qt.AlignRight
-                        text: root.matWaterTemp + " °C"
+                        text: root.matMotorSpeed + " r/min"
                         color: root.colorFg; font.pixelSize: 14
                     }
 
                     Text { text: qsTr("剩余时间"); color: root.colorMuted; font.pixelSize: 13 }
                     Text {
                         Layout.alignment: Qt.AlignRight
-                        text: {
-                            var mm = String(root.matRemainMin).padStart(2, '0')
-                            var ss = String(root.matRemainSec).padStart(2, '0')
-                            return mm + ":" + ss
-                        }
+                        text: root.matTimeToEnd + " min"
+                        color: root.colorFg; font.pixelSize: 14
+                    }
+
+                    Text { text: qsTr("整机故障码"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: root.matErrorCode === 0 ? qsTr("正常") : ("E" + root.matErrorCode)
+                        color: root.matErrorCode === 0 ? "#66bb6a" : "#ef5350"
+                        font.pixelSize: 14; font.bold: true
+                    }
+
+                    Text { text: qsTr("负载量"); color: root.colorMuted; font.pixelSize: 13 }
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: root.matLoad + ""
                         color: root.colorFg; font.pixelSize: 14
                     }
                 }

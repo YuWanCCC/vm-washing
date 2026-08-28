@@ -43,6 +43,10 @@ class MatSerialManager : public QObject
     Q_PROPERTY(int errorCount READ errorCount NOTIFY statsChanged)
     Q_PROPERTY(bool pollEnabled READ isPollEnabled WRITE setPollEnabled NOTIFY pollEnabledChanged)
     Q_PROPERTY(int pollIntervalMs READ pollIntervalMs WRITE setPollIntervalMs NOTIFY pollIntervalChanged)
+    //! 最近一次状态查询 SDU 原始字节的十六进制字符串（如 "0102af..."），供 QML 可靠绑定
+    Q_PROPERTY(QString lastSduHex READ lastSduHex NOTIFY lastSduHexChanged)
+    //! 每次 SDU 更新时递增，QML 用作绑定依赖强制重新求值
+    Q_PROPERTY(int sduRevision READ sduRevision NOTIFY sduRevisionChanged)
 
 public:
     enum ConnectionState {
@@ -83,6 +87,9 @@ public:
     void setPollEnabled(bool enabled);
     int pollIntervalMs() const;
     void setPollIntervalMs(int ms);
+    QByteArray lastSduRaw() const;
+    QString lastSduHex() const;
+    int sduRevision() const;
 
 signals:
     void connectionChanged(bool connected);
@@ -91,11 +98,8 @@ signals:
     void connectionStateChanged();
     void portsChanged();
     void statsChanged();
-    //! 收到并解析成功的主控状态回复
-    void statusReceived(int workStatus, int faultCode,
-                        int motorRpm, int waterLevel, int waterTemp,
-                        int remainMin, int remainSec,
-                        const QByteArray &rawSdu);
+    //! 收到并解析成功的主控状态回复（传递完整 67 字节原始 SDU，QML 端自行解析）
+    void statusReceived(const QByteArray &rawSdu);
     //! 收到任意有效 MAT 帧（含控制帧回复等）
     void frameReceived(int command, const QByteArray &sdu);
     void errorOccurred(const QString &error);
@@ -103,6 +107,9 @@ signals:
     void debugMessage(const QString &message);
     void pollEnabledChanged();
     void pollIntervalChanged();
+    void lastSduRawChanged();
+    void lastSduHexChanged();
+    void sduRevisionChanged();
 
 private slots:
     void onReadyRead();
@@ -130,6 +137,8 @@ private:
     int m_pollIntervalMs = 500;
 
     QByteArray m_rxBuf;          //!< 串口接收缓冲（用于跨包拼帧）
+    QByteArray m_lastSduRaw;     //!< 最近一次状态 SDU 原始字节
+    int m_sduRevision = 0;       //!< SDU 更新计数器
 };
 
 } // namespace whm

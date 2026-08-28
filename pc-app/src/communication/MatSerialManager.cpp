@@ -169,10 +169,16 @@ void MatSerialManager::onReadyRead()
         if (frame.command == static_cast<uint8_t>(MatCommand::Query)) {
             MatStatus st = MatCodec::decodeStatus(frame);
             if (st.isValid) {
-                emit statusReceived(st.workStatus, st.faultCode,
-                                    st.motorRpm, st.waterLevel,
-                                    st.waterTemp, st.remainMin,
-                                    st.remainSec, st.rawBytes);
+                m_lastSduRaw = st.rawBytes;
+                ++m_sduRevision;
+                emit lastSduRawChanged();
+                emit lastSduHexChanged();
+                emit sduRevisionChanged();
+                emit statusReceived(st.rawBytes);
+            } else {
+                emit debugMessage(
+                    QStringLiteral("[WARN] decodeStatus 失败: sdu_len=%1")
+                    .arg(frame.sdu.size()));
             }
         }
     }
@@ -202,8 +208,11 @@ void MatSerialManager::onSerialError(QSerialPort::SerialPortError error)
 
 void MatSerialManager::onPollTimer()
 {
-    if (m_serial->isOpen())
+    if (m_serial->isOpen()) {
         sendQuery();
+    } else {
+        emit debugMessage(QStringLiteral("[WARN] 轮询定时器触发但串口未打开"));
+    }
 }
 
 /* ==========================================================================
@@ -270,6 +279,10 @@ int MatSerialManager::errorCount() const { return m_errorCount; }
 bool MatSerialManager::isPollEnabled() const { return m_pollEnabled; }
 int MatSerialManager::pollIntervalMs() const { return m_pollIntervalMs; }
 
+QByteArray MatSerialManager::lastSduRaw() const { return m_lastSduRaw; }
+QString MatSerialManager::lastSduHex() const { return QString::fromLatin1(m_lastSduRaw.toHex()); }
+int MatSerialManager::sduRevision() const { return m_sduRevision; }
+
 void MatSerialManager::setPortName(const QString &name)
 {
     if (m_portName == name) return;
@@ -290,6 +303,10 @@ void MatSerialManager::setPollEnabled(bool enabled)
 {
     if (m_pollEnabled == enabled) return;
     m_pollEnabled = enabled;
+    emit debugMessage(QStringLiteral("[CON] 轮询已%1 (间隔 %2 ms, 串口%3)")
+                      .arg(enabled ? QStringLiteral("启用") : QStringLiteral("停用"))
+                      .arg(m_pollIntervalMs)
+                      .arg(m_serial->isOpen() ? QStringLiteral("已打开") : QStringLiteral("未打开")));
     if (m_serial->isOpen()) {
         if (enabled) m_pollTimer->start();
         else         m_pollTimer->stop();

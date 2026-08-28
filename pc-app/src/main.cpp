@@ -96,6 +96,18 @@ int main(int argc, char *argv[])
         QUrl::fromLocalFile(QCoreApplication::applicationDirPath()
                             + QLatin1Char('/')).toString());
 
+    // 构建版本标签：编译日期 + 时间，QML 顶部显示用于确认是否为最新构建
+    engine.rootContext()->setContextProperty(
+        QStringLiteral("buildVersion"),
+        QStringLiteral("v%1  build: %2 %3")
+            .arg(QStringLiteral(WMHIL_VERSION),
+                 QStringLiteral(__DATE__),
+                 QStringLiteral(__TIME__)));
+    qDebug() << "Build version:" << QStringLiteral("v%1  build: %2 %3")
+                    .arg(QStringLiteral(WMHIL_VERSION),
+                         QStringLiteral(__DATE__),
+                         QStringLiteral(__TIME__));
+
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
                      &app, []() { QCoreApplication::exit(-1); },
                      Qt::QueuedConnection);

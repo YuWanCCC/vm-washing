@@ -22,9 +22,9 @@ QByteArray MatCodec::buildFrame(uint8_t address, uint8_t command,
     frame.append(static_cast<char>(command));
     frame.append(sdu);
 
-    // FCS 覆盖 Address + Length + Command + SDU
-    const auto *fcsData = reinterpret_cast<const uint8_t *>(frame.constData() + 1);
-    const size_t fcsLen = static_cast<size_t>(frame.size() - 1);
+    // FCS 覆盖 Header(0xFA) + Address + Length + Command + SDU
+    const auto *fcsData = reinterpret_cast<const uint8_t *>(frame.constData());
+    const size_t fcsLen = static_cast<size_t>(frame.size());
     const uint8_t fcs = MatCRC8::calculate(fcsData, fcsLen);
 
     frame.append(static_cast<char>(fcs));
@@ -107,9 +107,9 @@ MatFrame MatCodec::parseFrame(const QByteArray &buf, int *consumed)
         return frame;
     }
 
-    // 验证 FCS
-    const auto *fcsData = reinterpret_cast<const uint8_t *>(buf.constData() + 1);
-    const size_t fcsLen = static_cast<size_t>(2 + length);  // addr+len+cmd+sdu
+    // 验证 FCS（覆盖 Header + Address + Length + Command + SDU）
+    const auto *fcsData = reinterpret_cast<const uint8_t *>(buf.constData());
+    const size_t fcsLen = static_cast<size_t>(3 + length);  // hdr+addr+len+cmd+sdu
     const uint8_t receivedFcs = static_cast<uint8_t>(buf[3 + length]);
     if (!MatCRC8::verify(fcsData, fcsLen, receivedFcs)) {
         // FCS 错误，跳过此帧头
@@ -128,27 +128,114 @@ MatFrame MatCodec::parseFrame(const QByteArray &buf, int *consumed)
 
 MatStatus MatCodec::decodeStatus(const MatFrame &frame)
 {
-    MatStatus status;
+    MatStatus s;
 
     if (!frame.isValid
         || frame.command != static_cast<uint8_t>(MatCommand::Query)
-        || frame.sdu.size() < 10) {
-        return status;
+        || frame.sdu.size() < 1) {
+        return s;
     }
 
-    status.rawBytes   = frame.sdu;
-    const auto *d     = reinterpret_cast<const uint8_t *>(frame.sdu.constData());
-    status.workStatus = d[0];
-    status.faultCode  = d[1];
-    status.childLock  = d[2];
-    // d[3] 保留
-    status.motorRpm   = static_cast<uint16_t>(d[4] | (d[5] << 8));
-    status.waterLevel = d[6];
-    status.waterTemp  = d[7];
-    status.remainMin  = d[8];
-    status.remainSec  = d[9];
-    status.isValid    = true;
-    return status;
+    s.rawBytes = frame.sdu;
+    s.sduLen   = frame.sdu.size();
+    const auto *d = reinterpret_cast<const uint8_t *>(frame.sdu.constData());
+    const int len = s.sduLen;  // 实际可用长度
+
+    // ---- BYTE 1-2: 协议基本信息（偏移 0-1）----
+    if (len >= 1) s.protocolVersion = d[0];
+    if (len >= 2) s.machineType     = d[1];
+
+    // ---- BYTE 3 (偏移 2): 开关状态 1 ----
+    if (len >= 3) {
+        s.antiCrease    = d[2] & 0x80;
+        s.doorSwitch    = d[2] & 0x40;
+        s.drumLight     = d[2] & 0x20;
+        s.blueLight     = d[2] & 0x10;
+        s.uvLight       = d[2] & 0x08;
+        s.fan           = d[2] & 0x04;
+        s.floatSwitch   = d[2] & 0x02;
+        s.steamLowWater = d[2] & 0x01;
+    }
+
+    // ---- BYTE 4 (偏移 3): 开关状态 2 ----
+    if (len >= 4) {
+        s.compressorSwitch = d[3] & 0x80;
+        s.drainPump        = d[3] & 0x40;
+        s.electricTee      = d[3] & 0x20;
+        s.steamGenerator   = d[3] & 0x10;
+        s.anion            = d[3] & 0x08;
+        s.rotateLeft       = d[3] & 0x04;
+        s.rotateRight      = d[3] & 0x02;
+        s.motorStop        = d[3] & 0x01;
+    }
+
+    // ---- BYTE 5 (偏移 4): 开关状态 3 ----
+    if (len >= 5) {
+        s.compressor = d[4] & 0x04;
+        s.heater     = d[4] & 0x02;
+        s.ctrlFan    = d[4] & 0x01;
+    }
+
+    // ---- 传感器数据（偏移 5-20）----
+    if (len >= 7)  s.humidity     = static_cast<uint16_t>(d[5]  | (d[6]  << 8));
+    if (len >= 9)  s.humidityRaw  = static_cast<uint16_t>(d[7]  | (d[8]  << 8));
+    if (len >= 10) s.dryStep      = d[9];
+    if (len >= 11) s.load         = d[10];
+    if (len >= 13) s.motorSpeed   = static_cast<int16_t>(static_cast<uint16_t>(d[11] | (d[12] << 8)));
+    if (len >= 15) s.ntc1Raw      = static_cast<uint16_t>(d[13] | (d[14] << 8));
+    if (len >= 16) s.ntc1Int      = d[15];
+    if (len >= 17) s.ntc1Dec      = d[16];
+    if (len >= 19) s.ntc2Raw      = static_cast<uint16_t>(d[17] | (d[18] << 8));
+    if (len >= 20) s.ntc2Int      = d[19];
+    if (len >= 21) s.ntc2Dec      = d[20];
+
+    // ---- 程序与时间（偏移 21-25）----
+    if (len >= 22) s.programId    = d[21];
+    if (len >= 24) s.programTime  = static_cast<uint16_t>(d[22] | (d[23] << 8));
+    if (len >= 26) s.timeToEnd    = static_cast<uint16_t>(d[24] | (d[25] << 8));
+
+    // ---- 变频数据（偏移 26-34）----
+    if (len >= 28) s.fanSpeed        = static_cast<uint16_t>(d[26] | (d[27] << 8));
+    if (len >= 30) s.compressorSpeed = static_cast<uint16_t>(d[28] | (d[29] << 8));
+    if (len >= 32) s.compressorPower = static_cast<uint16_t>(d[30] | (d[31] << 8));
+    if (len >= 33) s.paramP = static_cast<int8_t>(d[32]);
+    if (len >= 34) s.paramI = static_cast<int8_t>(d[33]);
+    if (len >= 35) s.paramD = static_cast<int8_t>(d[34]);
+
+    // ---- 3D 传感器（偏移 35-46）----
+    if (len >= 37) s.sensor3dRef      = static_cast<uint16_t>(d[35] | (d[36] << 8));
+    if (len >= 39) s.sensor3dSense    = static_cast<uint16_t>(d[37] | (d[38] << 8));
+    if (len >= 41) s.sensor3dMoisture = static_cast<uint16_t>(d[39] | (d[40] << 8));
+    if (len >= 43) s.sensor3dStdDev   = static_cast<uint16_t>(d[41] | (d[42] << 8));
+    if (len >= 45) s.sensor3dFitting  = static_cast<int16_t>(static_cast<uint16_t>(d[43] | (d[44] << 8)));
+    if (len >= 47) s.sensor3dFitStd   = static_cast<uint16_t>(d[45] | (d[46] << 8));
+
+    // ---- 故障码（偏移 47-50）----
+    if (len >= 48) s.errorCode      = d[47];
+    if (len >= 49) s.motorErrorCode = d[48];
+    if (len >= 50) s.fanErrorCode   = d[49];
+    if (len >= 51) s.compErrorCode  = d[50];
+
+    // ---- 版本信息（偏移 51-60）----
+    if (len >= 52) s.versionA = d[51];
+    if (len >= 53) s.versionB = d[52];
+    if (len >= 54) s.versionC = d[53];
+    if (len >= 55) s.versionE = d[54];
+    if (len >= 56) s.versionF = d[55];
+    if (len >= 57) s.versionP = d[56];
+    if (len >= 58) s.versionT = d[57];
+    if (len >= 59) s.versionD = d[58];
+    if (len >= 60) s.versionG = d[59];
+    if (len >= 61) s.versionO = d[60];
+
+    // ---- 功率与湿度（偏移 61-66）----
+    if (len >= 63) s.fanPower       = static_cast<uint16_t>(d[61] | (d[62] << 8));
+    if (len >= 65) s.electricPower  = static_cast<uint16_t>(d[63] | (d[64] << 8));
+    if (len >= 66) s.humidityRatio  = d[65];
+    if (len >= 67) s.temp3dFitting  = d[66];
+
+    s.isValid = true;
+    return s;
 }
 
 } // namespace whm

@@ -12,7 +12,7 @@ import HIL.Fault 1.0
     SimulationEngine 在此唯一实例化并向下传递；场景管理器直接取引擎内部的
     engine.scenarios，保证界面选择的程序与状态机实际加载的场景是同一份数据。
 
-    底部面板标签页：0=数据监控, 1=串口调试（HIL）, 2=MAT协议
+    底部面板标签页：0=数据监控, 1=串口调试（HIL）, 2=MAT数据监控, 3=MAT协议
 */
 ApplicationWindow {
     id: root
@@ -20,7 +20,7 @@ ApplicationWindow {
     readonly property color colorBackground: "#2b2b2b"
     readonly property color colorAccent: "#4fc3f7"
 
-    //! 底部面板当前选中的标签页（0=数据监控, 1=串口调试, 2=MAT协议）
+    //! 底部面板当前选中的标签页（0=数据监控, 1=串口调试, 2=MAT数据监控, 3=MAT协议）
     property int bottomTab: 0
     //! 工作模式: 0=HIL, 1=MAT
     property int workMode: 0
@@ -34,6 +34,9 @@ ApplicationWindow {
     visible: true
     color: colorBackground
     title: qsTr("洗衣机HIL仿真平台")
+
+    // 构建版本标签（顶部右侧），用于确认当前运行的是否为最新构建
+    property string buildVer: typeof buildVersion !== 'undefined' ? buildVersion : "unknown"
 
     Behavior on monitorHeight {
         NumberAnimation { duration: 180; easing.type: Easing.InOutQuad }
@@ -152,6 +155,16 @@ ApplicationWindow {
             onWorkModeChanged: root.workMode = workMode
         }
 
+        // 构建版本标签（右上角）
+        Text {
+            text: root.buildVer
+            color: "#5a6a7a"
+            font.pixelSize: 10
+            font.italic: true
+            Layout.alignment: Qt.AlignRight
+            horizontalAlignment: Text.AlignRight
+        }
+
         SplitView {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -239,7 +252,7 @@ ApplicationWindow {
 
                         // 标签页按钮
                         Repeater {
-                            model: [qsTr("数据监控"), qsTr("串口调试 HIL"), qsTr("MAT协议")]
+                            model: [qsTr("数据监控"), qsTr("串口调试 HIL"), qsTr("MAT数据监控"), qsTr("MAT协议")]
 
                             Rectangle {
                                 Layout.preferredHeight: 28
@@ -318,8 +331,6 @@ ApplicationWindow {
                         id: dataMonitor
                         anchors.fill: parent
                         engine: simEngine
-                        mat: matSerial
-                        workMode: root.workMode
                         expanded: true
                         visible: root.bottomTab === 0
                     }
@@ -331,11 +342,18 @@ ApplicationWindow {
                         visible: root.bottomTab === 1
                     }
 
+                    MatDataMonitor {
+                        id: matDataMonitor
+                        anchors.fill: parent
+                        mat: matSerial
+                        visible: root.bottomTab === 2
+                    }
+
                     MatPanel {
                         id: matPanel
                         anchors.fill: parent
                         mat: matSerial
-                        visible: root.bottomTab === 2
+                        visible: root.bottomTab === 3
                     }
                 }
             }

@@ -13,7 +13,7 @@
       "label": "构建 (Debug)",
       "type": "process",
       "command": "${config:cmake.cmakePath}",
-      "args": ["--build", "--preset", "mingw-debug"],
+      "args": ["--build", "--preset", "mingw-debug", "-j"],
       "options": { "cwd": "${workspaceFolder}" },
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": ["$gcc"]
@@ -64,7 +64,6 @@
       "command": "${config:cmake.cmakePath}",
       "args": ["--build", "--preset", "fw-release", "-j"],
       "options": { "cwd": "${workspaceFolder}/firmware" },
-      "dependsOn": "固件: 配置 (Release)",
       "problemMatcher": ["$gcc"]
     },
     {
@@ -83,7 +82,6 @@
       "command": "${config:cmake.cmakePath}",
       "args": ["--build", "--preset", "fw-debug", "-j"],
       "options": { "cwd": "${workspaceFolder}/firmware" },
-      "dependsOn": "固件: 配置 (Debug)",
       "problemMatcher": ["$gcc"]
     },
     {

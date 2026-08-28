@@ -16,11 +16,7 @@ namespace whm {
  *   - REFOUT:  false
  *   - XorOut:  0x00
  *
- * 验证向量：
- *   crc8({0x00}) = 0x00
- *   crc8({0x01}) = 0x9B（table[1]）
- *
- * 校验覆盖范围：Address + Length + Command + SDU（不含 Header 0xFA 和 FCS 自身）。
+ * 校验覆盖范围：Header(0xFA) + Address + Length + Command + SDU（不含 FCS 自身）。
  */
 class MatCRC8
 {
@@ -38,7 +34,7 @@ public:
     static bool verify(const uint8_t *data, size_t length, uint8_t expected);
 
 private:
-    //! 256 项查找表（反射多项式 0x8C 预计算），避免每次运行时计算
+    //! 256 项查找表（多项式 0x9B 预计算，MSB-first）
     static const uint8_t s_table[256];
 };
 

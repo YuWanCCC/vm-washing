@@ -60,8 +60,10 @@ Rectangle {
     readonly property int motorSpeed:   { if (sduLen < 13) return 0; var v = (sdu[12] << 8) | sdu[11]; return v > 32767 ? v - 65536 : v; }
     readonly property int ntc1Int:      sduLen >= 16 ? sdu[15] : 0
     readonly property int ntc1Dec:      sduLen >= 17 ? sdu[16] : 0
+    readonly property int ntc1Raw:      sduLen >= 15 ? ((sdu[14] << 8) | sdu[13]) : 0
     readonly property int ntc2Int:      sduLen >= 20 ? sdu[19] : 0
     readonly property int ntc2Dec:      sduLen >= 21 ? sdu[20] : 0
+    readonly property int ntc2Raw:      sduLen >= 19 ? ((sdu[18] << 8) | sdu[17]) : 0
     readonly property int programId:    sduLen >= 22 ? sdu[21] : 0
     readonly property int programTime:  sduLen >= 24 ? ((sdu[23] << 8) | sdu[22]) : 0
     readonly property int timeToEnd:    sduLen >= 26 ? ((sdu[25] << 8) | sdu[24]) : 0
@@ -77,6 +79,14 @@ Rectangle {
     readonly property int humidityRatio:sduLen >= 66 ? sdu[65] : 0
     readonly property string machineTypeText: {
         switch (machineType) { case 1: return qsTr("滚筒"); case 2: return qsTr("波轮"); case 3: return qsTr("干衣机"); default: return machineType; }
+    }
+
+    function formatTime(totalSeconds) {
+        var h = Math.floor(totalSeconds / 3600);
+        var m = Math.floor((totalSeconds % 3600) / 60);
+        var s = totalSeconds % 60;
+        var pad = function(n) { return n < 10 ? "0" + n : "" + n; };
+        return (h > 0 ? h + ":" : "") + pad(m) + ":" + pad(s);
     }
 
     color: colorSurface
@@ -194,24 +204,14 @@ Rectangle {
                     Rectangle { Layout.fillWidth: true; height: 1; color: root.colorBorder }
                 }
                 RowLayout {
-                    Layout.fillWidth: true; spacing: 8
+                    Layout.fillWidth: true; spacing: 6
                     ValueCell { label: qsTr("协议版本"); value: root.protocolVer + ""; seriesColor: root.colorAccent }
                     ValueCell { label: qsTr("机器类型"); value: root.machineTypeText; seriesColor: root.colorAccent }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell { label: qsTr("程序 ID");  value: root.programId + ""; seriesColor: root.colorAccent }
                     ValueCell { label: qsTr("负载量");   value: root.load + ""; seriesColor: root.colorLevel }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
-                    ValueCell { label: qsTr("电机转速"); value: root.motorSpeed + " r/min"; seriesColor: root.colorSpeed }
                     ValueCell { label: qsTr("烘干进程"); value: root.dryStep + ""; seriesColor: root.colorMuted }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
-                    ValueCell { label: qsTr("程序时间"); value: root.programTime + " min"; seriesColor: root.colorMuted }
-                    ValueCell { label: qsTr("剩余时间"); value: root.timeToEnd + " min"; seriesColor: root.colorAccent }
+                    ValueCell { label: qsTr("程序时间"); value: root.formatTime(root.programTime); seriesColor: root.colorMuted }
+                    ValueCell { label: qsTr("剩余时间"); value: root.formatTime(root.timeToEnd); seriesColor: root.colorAccent }
                 }
 
                 // ---------- 开关状态 ----------
@@ -224,42 +224,42 @@ Rectangle {
                 }
                 RowLayout {
                     Layout.fillWidth: true; spacing: 8
-                    // BYTE3
+                    // BYTE3 (8项)
                     Rectangle {
-                        Layout.fillWidth: true; Layout.preferredHeight: 100
+                        Layout.fillWidth: true; Layout.preferredHeight: 56
                         radius: 6; color: colorSurfaceAlt
                         ColumnLayout {
-                            anchors.fill: parent; anchors.margins: 8; spacing: 6
+                            anchors.fill: parent; anchors.margins: 8; spacing: 4
                             Text { text: "BYTE 3  (0x" + (root.byte3 < 16 ? "0" : "") + root.byte3.toString(16).toUpperCase() + ")"; color: root.colorSwitch; font.pixelSize: 11; font.bold: true }
-                            Flow { Layout.fillWidth: true; spacing: 8
+                            RowLayout { Layout.fillWidth: true; spacing: 6
                                 Repeater { model: [qsTr("防皱"), qsTr("门"), qsTr("筒灯"), qsTr("蓝光灯"), qsTr("UV灯"), qsTr("风扇"), qsTr("浮子"), qsTr("蒸汽缺水")]
                                     SwitchDot { label: modelData; on: root.byte3 & (0x80 >> index) }
                                 }
                             }
                         }
                     }
-                    // BYTE4
+                    // BYTE4 (8项，名称较长)
                     Rectangle {
-                        Layout.fillWidth: true; Layout.preferredHeight: 100
+                        Layout.fillWidth: true; Layout.preferredHeight: 56
                         radius: 6; color: colorSurfaceAlt
                         ColumnLayout {
-                            anchors.fill: parent; anchors.margins: 8; spacing: 6
+                            anchors.fill: parent; anchors.margins: 8; spacing: 4
                             Text { text: "BYTE 4  (0x" + (root.byte4 < 16 ? "0" : "") + root.byte4.toString(16).toUpperCase() + ")"; color: root.colorSwitch; font.pixelSize: 11; font.bold: true }
-                            Flow { Layout.fillWidth: true; spacing: 8
+                            RowLayout { Layout.fillWidth: true; spacing: 6
                                 Repeater { model: [qsTr("压缩机"), qsTr("排水泵"), qsTr("电三通"), qsTr("蒸汽发生"), qsTr("负离子"), qsTr("左转"), qsTr("右转"), qsTr("电机停")]
                                     SwitchDot { label: modelData; on: root.byte4 & (0x80 >> index) }
                                 }
                             }
                         }
                     }
-                    // BYTE5
+                    // BYTE5 (3项)
                     Rectangle {
-                        Layout.fillWidth: true; Layout.preferredHeight: 100
+                        Layout.fillWidth: true; Layout.preferredHeight: 56
                         radius: 6; color: colorSurfaceAlt
                         ColumnLayout {
-                            anchors.fill: parent; anchors.margins: 8; spacing: 6
+                            anchors.fill: parent; anchors.margins: 8; spacing: 4
                             Text { text: "BYTE 5  (0x" + (root.byte5 < 16 ? "0" : "") + root.byte5.toString(16).toUpperCase() + ")"; color: root.colorSwitch; font.pixelSize: 11; font.bold: true }
-                            Flow { Layout.fillWidth: true; spacing: 8
+                            RowLayout { Layout.fillWidth: true; spacing: 6
                                 Repeater { model: [qsTr("压缩机"), qsTr("加热管"), qsTr("变频风机")]
                                     SwitchDot { label: modelData; on: root.byte5 & (0x80 >> index) }
                                 }
@@ -277,19 +277,14 @@ Rectangle {
                     Rectangle { Layout.fillWidth: true; height: 1; color: root.colorBorder }
                 }
                 RowLayout {
-                    Layout.fillWidth: true; spacing: 8
+                    Layout.fillWidth: true; spacing: 6
                     ValueCell { label: qsTr("湿度");     value: root.humidity + ""; seriesColor: root.colorLevel }
                     ValueCell { label: qsTr("原始湿度"); value: root.humidityRaw + ""; seriesColor: root.colorLevel }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell { label: qsTr("湿度占比"); value: root.humidityRatio + ""; seriesColor: root.colorLevel }
                     ValueCell { label: qsTr("NTC1");     value: root.ntc1Int + "." + root.ntc1Dec + " °C"; seriesColor: root.colorTemp }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
+                    ValueCell { label: qsTr("NTC1原始"); value: root.ntc1Raw + ""; seriesColor: root.colorTemp }
                     ValueCell { label: qsTr("NTC2");     value: root.ntc2Int + "." + root.ntc2Dec + " °C"; seriesColor: root.colorTemp }
-                    Item { Layout.fillWidth: true }
+                    ValueCell { label: qsTr("NTC2原始"); value: root.ntc2Raw + ""; seriesColor: root.colorTemp }
                 }
 
                 // ---------- 故障码 ----------
@@ -301,7 +296,7 @@ Rectangle {
                     Rectangle { Layout.fillWidth: true; height: 1; color: root.colorBorder }
                 }
                 RowLayout {
-                    Layout.fillWidth: true; spacing: 8
+                    Layout.fillWidth: true; spacing: 6
                     ValueCell {
                         label: qsTr("整机"); value: root.errorCode === 0 ? qsTr("正常") : ("E" + root.errorCode)
                         seriesColor: root.errorCode === 0 ? root.colorOk : root.colorErr
@@ -310,9 +305,6 @@ Rectangle {
                         label: qsTr("电机"); value: root.motorErrCode === 0 ? qsTr("正常") : ("E" + root.motorErrCode)
                         seriesColor: root.motorErrCode === 0 ? root.colorOk : root.colorErr
                     }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell {
                         label: qsTr("风机"); value: root.fanErrCode === 0 ? qsTr("正常") : ("E" + root.fanErrCode)
                         seriesColor: root.fanErrCode === 0 ? root.colorOk : root.colorErr
@@ -332,19 +324,13 @@ Rectangle {
                     Rectangle { Layout.fillWidth: true; height: 1; color: root.colorBorder }
                 }
                 RowLayout {
-                    Layout.fillWidth: true; spacing: 8
+                    Layout.fillWidth: true; spacing: 6
+                    ValueCell { label: qsTr("电机转速");   value: root.motorSpeed + " r/min"; seriesColor: root.colorSpeed }
                     ValueCell { label: qsTr("风机转速");   value: root.fanSpeed + " rpm"; seriesColor: root.colorPower }
                     ValueCell { label: qsTr("压缩机转速"); value: root.compSpeed + " rpm"; seriesColor: root.colorPower }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell { label: qsTr("压缩机功率"); value: root.compPower + ""; seriesColor: root.colorPower }
                     ValueCell { label: qsTr("风机功率");   value: root.fanPower + ""; seriesColor: root.colorPower }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell { label: qsTr("电机功率");   value: root.electricPower + ""; seriesColor: root.colorPower }
-                    Item { Layout.fillWidth: true }
                 }
 
                 // ---------- 版本信息 ----------
@@ -356,27 +342,15 @@ Rectangle {
                     Rectangle { Layout.fillWidth: true; height: 1; color: root.colorBorder }
                 }
                 RowLayout {
-                    Layout.fillWidth: true; spacing: 8
+                    Layout.fillWidth: true; spacing: 6
                     ValueCell { label: "A"; value: root.sduLen >= 52 ? root.sdu[51] + "" : "-"; seriesColor: root.colorMuted }
                     ValueCell { label: "B"; value: root.sduLen >= 53 ? root.sdu[52] + "" : "-"; seriesColor: root.colorMuted }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell { label: "C"; value: root.sduLen >= 54 ? root.sdu[53] + "" : "-"; seriesColor: root.colorMuted }
                     ValueCell { label: "E"; value: root.sduLen >= 55 ? root.sdu[54] + "" : "-"; seriesColor: root.colorMuted }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell { label: "F"; value: root.sduLen >= 56 ? root.sdu[55] + "" : "-"; seriesColor: root.colorMuted }
                     ValueCell { label: "P"; value: root.sduLen >= 57 ? root.sdu[56] + "" : "-"; seriesColor: root.colorMuted }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell { label: "T"; value: root.sduLen >= 58 ? root.sdu[57] + "" : "-"; seriesColor: root.colorMuted }
                     ValueCell { label: "D"; value: root.sduLen >= 59 ? root.sdu[58] + "" : "-"; seriesColor: root.colorMuted }
-                }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8
                     ValueCell { label: "G"; value: root.sduLen >= 60 ? root.sdu[59] + "" : "-"; seriesColor: root.colorMuted }
                     ValueCell { label: "O"; value: root.sduLen >= 61 ? root.sdu[60] + "" : "-"; seriesColor: root.colorMuted }
                 }
@@ -416,7 +390,7 @@ Rectangle {
             ValueCell {
                 label: qsTr("剩余时间")
                 seriesColor: root.colorAccent
-                value: root.timeToEnd + " min"
+                value: root.formatTime(root.timeToEnd)
             }
             ValueCell {
                 label: qsTr("故障")

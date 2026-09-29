@@ -12,7 +12,7 @@ import HIL.Fault 1.0
     SimulationEngine 在此唯一实例化并向下传递；场景管理器直接取引擎内部的
     engine.scenarios，保证界面选择的程序与状态机实际加载的场景是同一份数据。
 
-    底部面板标签页：0=数据监控, 1=串口调试（HIL）, 2=MAT数据监控, 3=MAT协议
+    底部面板标签页：0=数据监控, 1=HIL调试, 2=MAT监控, 3=MAT协议, 4=驱动监控, 5=驱动日志
 */
 ApplicationWindow {
     id: root
@@ -20,10 +20,14 @@ ApplicationWindow {
     readonly property color colorBackground: "#2b2b2b"
     readonly property color colorAccent: "#4fc3f7"
 
-    //! 底部面板当前选中的标签页（0=数据监控, 1=串口调试, 2=MAT数据监控, 3=MAT协议）
+    //! 底部面板当前标签页（0/1=HIL，2/3=MAT，4/5=驱动）
     property int bottomTab: 0
-    //! 工作模式: 0=HIL, 1=MAT
+    //! 工作模式: 0=HIL, 1=MAT, 2=驱动
     property int workMode: 0
+    onWorkModeChanged: {
+        if (workMode === 2) bottomTab = 4;
+        else if (bottomTab >= 4) bottomTab = workMode === 1 ? 2 : 0;
+    }
     //! 底部面板是否展开
     property bool bottomExpanded: true
     //! 底部面板目标高度
@@ -59,6 +63,10 @@ ApplicationWindow {
         id: matSerial
     }
 
+    DriveSerialManager {
+        id: driveSerial
+    }
+
     //! 故障注入器：对下行传感器输出通道注入断线/短路等故障
     FaultInjector {
         id: faultInjector
@@ -88,6 +96,7 @@ ApplicationWindow {
     Component.onCompleted: {
         serialManager.refreshPorts()
         matSerial.refreshPorts()
+        driveSerial.refreshPorts()
     }
 
     // 引擎保护动作（溢流/过热/超时）以浮层提示
@@ -111,11 +120,17 @@ ApplicationWindow {
         function onErrorOccurred(error) { warningBanner.show(qsTr("MAT: ") + error); }
     }
 
+    Connections {
+        target: driveSerial
+        function onErrorOccurred(message) { warningBanner.show(qsTr("驱动: ") + message); }
+    }
+
     // ------------------------------------------------------------------
     // 全局快捷键
     // ------------------------------------------------------------------
     Shortcut {
         sequence: "Space"
+        enabled: root.workMode !== 2
         context: Qt.ApplicationShortcut
         onActivated: {
             if (simEngine.running)
@@ -127,6 +142,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "R"
+        enabled: root.workMode !== 2
         context: Qt.ApplicationShortcut
         onActivated: simEngine.reset()
     }
@@ -151,8 +167,10 @@ ApplicationWindow {
             engine: simEngine
             serial: serialManager
             mat: matSerial
+            drive: driveSerial
+            onConnectionError: function(message) { warningBanner.show(message); }
             workMode: root.workMode
-            onWorkModeChanged: root.workMode = workMode
+            onWorkModeRequested: function(mode) { root.workMode = mode; }
         }
 
         // 构建版本标签（右上角）
@@ -192,6 +210,7 @@ ApplicationWindow {
                 recorder: dataRecorder
                 workMode: root.workMode
                 mat: matSerial
+                drive: driveSerial
             }
         }
 
@@ -252,7 +271,8 @@ ApplicationWindow {
 
                         // 标签页按钮
                         Repeater {
-                            model: [qsTr("数据监控"), qsTr("串口调试 HIL"), qsTr("MAT数据监控"), qsTr("MAT协议")]
+                            model: [qsTr("数据监控"), qsTr("串口调试 HIL"), qsTr("MAT数据监控"), qsTr("MAT协议"),
+                                    qsTr("驱动数据监控"), qsTr("驱动通信日志")]
 
                             Rectangle {
                                 Layout.preferredHeight: 28
@@ -274,6 +294,7 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
+                                        if (index >= 4) root.workMode = 2;
                                         root.bottomTab = index;
                                         root.bottomExpanded = true;
                                     }
@@ -355,6 +376,18 @@ ApplicationWindow {
                         mat: matSerial
                         visible: root.bottomTab === 3
                     }
+
+                    DriveDataMonitor {
+                        anchors.fill: parent
+                        drive: driveSerial
+                        visible: root.bottomTab === 4
+                    }
+
+                    DrivePanel {
+                        anchors.fill: parent
+                        drive: driveSerial
+                        visible: root.bottomTab === 5
+                    }
                 }
             }
         }
@@ -413,7 +446,8 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 14
-        text: qsTr("Space 暂停/继续    R 重置    D 折叠/展开")
+        text: root.workMode === 2 ? qsTr("驱动仿真独立运行 · D 折叠/展开")
+                                 : qsTr("Space 暂停/继续    R 重置    D 折叠/展开")
         color: "#6f7780"
         font.pixelSize: 12
         z: 50

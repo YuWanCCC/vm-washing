@@ -21,6 +21,7 @@ Rectangle {
     property var recorder: null
     //! MatSerialManager 实例（MAT 模式直连主控板）
     property var mat: null
+    property var drive: null
     //! 工作模式: 0=HIL, 1=MAT
     property int workMode: 0
 
@@ -733,8 +734,15 @@ Rectangle {
             }
 
             // ============ 状态显示 ============
+            DriveControlPanel {
+                Layout.fillWidth: true
+                visible: root.workMode === 2
+                drive: root.drive
+            }
+
             GroupCard {
                 title: qsTr("实时状态")
+                visible: root.workMode !== 2
 
                 MeterRow {
                     label: qsTr("水位")
@@ -1038,6 +1046,7 @@ Rectangle {
             // ============ 故障注入（可折叠）============
             CollapseCard {
                 title: qsTr("故障注入")
+                visible: root.workMode !== 2
 
                 FaultPanel {
                     Layout.fillWidth: true
@@ -1048,6 +1057,7 @@ Rectangle {
             // ============ 数据记录（可折叠）============
             CollapseCard {
                 title: qsTr("数据记录")
+                visible: root.workMode !== 2
 
                 RecordPanel {
                     Layout.fillWidth: true

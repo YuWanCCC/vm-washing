@@ -4,10 +4,10 @@ import QtQuick.Layouts
 import HIL.Communication 1.0
 
 /*!
-    顶部状态栏：应用标题 + 仿真状态/计时 + HIL/MAT 模式切换与串口连接。
+    顶部状态栏：应用标题 + 仿真状态/计时 + HIL/MAT/驱动模式与串口连接。
 
     serial 为 HIL SerialManager，mat 为 MAT MatSerialManager，均允许为 null。
-    workMode: 0=HIL, 1=MAT，控制连接按钮操作的串口通道。
+    workMode: 0=HIL, 1=MAT, 2=驱动，控制连接按钮操作的串口通道。
 */
 Rectangle {
     id: root
@@ -17,7 +17,34 @@ Rectangle {
     property var serial: null
     //! whm::MatSerialManager 实例（MAT），可为 null
     property var mat: null
-    //! 工作模式: 0=HIL, 1=MAT
+    property var drive: null
+    readonly property var activeManager: workMode === 0 ? serial : workMode === 1 ? mat : drive
+    readonly property bool channelBusy: isBusy(activeManager)
+    signal connectionError(string message)
+    signal workModeRequested(int mode)
+
+    function isBusy(manager) {
+        if (!manager) return false;
+        return manager === serial ? manager.connectionState !== SerialManager.Disconnected : manager.connected;
+    }
+
+    function restorePortSelection() {
+        if (!activeManager) return;
+        var name = activeManager.portName;
+        portCombo.currentIndex = portCombo.find(name);
+        if (!name && portCombo.count > 0 && !channelBusy) {
+            portCombo.currentIndex = 0;
+            syncPortName(portCombo.currentText);
+        }
+    }
+
+    onActiveManagerChanged: Qt.callLater(restorePortSelection)
+    Component.onCompleted: Qt.callLater(restorePortSelection)
+    Connections {
+        target: root.activeManager
+        function onPortNameChanged() { Qt.callLater(root.restorePortSelection); }
+    }
+    //! 工作模式: 0=HIL, 1=MAT, 2=驱动
     property int workMode: 0
 
     readonly property color colorSurface: "#333333"
@@ -47,16 +74,15 @@ Rectangle {
         }
     }
 
-    //! 刷新两个串口管理器的可用端口列表，并将选中端口同步给两者
+    //! 仅刷新当前通道，保留各通道独立的端口配置
     function refreshAndSync() {
-        if (serial) serial.refreshPorts();
-        if (mat)    mat.refreshPorts();
+        if (activeManager) activeManager.refreshPorts();
+        Qt.callLater(restorePortSelection);
     }
 
-    //! 将 portCombo 当前选中的端口同步写入两个串口管理器
+    //! 仅修改未连接的当前通道，不改写其他通道
     function syncPortName(name) {
-        if (serial) serial.portName = name;
-        if (mat)    mat.portName    = name;
+        if (activeManager && !channelBusy && name) activeManager.portName = name;
     }
 
     implicitHeight: 38
@@ -93,12 +119,14 @@ Rectangle {
 
         // --- 中间：仿真状态与计时 ---
         Text {
-            text: qsTr("状态: ") + (root.engine ? root.engine.stateText : "-")
+            text: root.workMode === 2 ? qsTr("驱动板从机仿真")
+                                     : qsTr("状态: ") + (root.engine ? root.engine.stateText : "-")
             color: root.colorFg
             font.pixelSize: 14
         }
 
         Text {
+            visible: root.workMode !== 2
             text: qsTr("运行: ") + root.formatTime(root.engine ? root.engine.elapsedTime : 0)
                   + (root.engine && root.engine.timeScale !== 1
                      ? "  ×" + root.engine.timeScale.toFixed(1) : "")
@@ -110,11 +138,13 @@ Rectangle {
             Layout.preferredWidth: 8
             Layout.preferredHeight: 8
             radius: 4
-            color: root.engine && root.engine.running ? "#66bb6a" : "#616161"
+            color: root.workMode === 2 ? (root.drive && root.drive.connected ? "#66bb6a" : "#616161")
+                                      : (root.engine && root.engine.running ? "#66bb6a" : "#616161")
         }
 
         Text {
-            text: root.engine && root.engine.running ? qsTr("仿真中") : qsTr("已暂停")
+            text: root.workMode === 2 ? (root.drive && root.drive.connected ? qsTr("等待/响应主控") : qsTr("未连接"))
+                                     : (root.engine && root.engine.running ? qsTr("仿真中") : qsTr("已暂停"))
             color: root.colorMuted
             font.pixelSize: 12
         }
@@ -123,9 +153,9 @@ Rectangle {
 
         // --- 右侧：串口控制区 ---
 
-        // 模式切换: HIL ↔ MAT
+        // 模式切换请求交给主窗口，保留单向属性绑定
         Rectangle {
-            Layout.preferredWidth: 104
+            Layout.preferredWidth: 158
             Layout.preferredHeight: 26
             radius: 4
             color: "#3a3a3a"
@@ -137,58 +167,43 @@ Rectangle {
                 anchors.margins: 1
                 spacing: 0
 
-                Rectangle {
-                    Layout.fillWidth: true; Layout.fillHeight: true; radius: 3
-                    color: root.workMode === 0 ? root.colorAccent : "transparent"
-                    Text {
-                        anchors.centerIn: parent; text: "HIL"
-                        font.pixelSize: 12; font.bold: root.workMode === 0
-                        color: root.workMode === 0 ? "#10171d" : root.colorMuted
-                    }
-                    MouseArea {
-                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: root.workMode = 0
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true; Layout.fillHeight: true; radius: 3
-                    color: root.workMode === 1 ? root.colorAccent : "transparent"
-                    Text {
-                        anchors.centerIn: parent; text: "MAT"
-                        font.pixelSize: 12; font.bold: root.workMode === 1
-                        color: root.workMode === 1 ? "#10171d" : root.colorMuted
-                    }
-                    MouseArea {
-                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: root.workMode = 1
+                Repeater {
+                    model: ["HIL", "MAT", qsTr("驱动")]
+                    Rectangle {
+                        required property int index
+                        required property string modelData
+                        Layout.fillWidth: true; Layout.fillHeight: true; radius: 3
+                        color: root.workMode === index ? root.colorAccent : "transparent"
+                        Text {
+                            anchors.centerIn: parent; text: parent.modelData
+                            font.pixelSize: 12; font.bold: root.workMode === parent.index
+                            color: root.workMode === parent.index ? "#10171d" : root.colorMuted
+                        }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: root.workModeRequested(parent.index)
+                        }
                     }
                 }
             }
         }
 
-        // 端口选择（HIL 与 MAT 共用）
+        // 三个通道共用配置位置，各自记住端口
         ComboBox {
             id: portCombo
             Layout.preferredWidth: 110
             Layout.preferredHeight: 26
-            enabled: root.serial || root.mat
+            enabled: root.activeManager !== null && !root.channelBusy
             font.pixelSize: 12
-            model: root.serial ? root.serial.availablePorts
-                 : root.mat    ? root.mat.availablePorts
-                 : []
+            model: root.activeManager ? root.activeManager.availablePorts : []
+            displayText: currentIndex < 0 && root.activeManager ? root.activeManager.portName : currentText
             onActivated: root.syncPortName(currentText)
-            onModelChanged: {
-                if (count > 0) {
-                    currentIndex = 0;
-                    root.syncPortName(textAt(0));
-                }
-            }
+            onModelChanged: Qt.callLater(root.restorePortSelection)
         }
 
         ToolButton {
             Layout.preferredHeight: 26
-            enabled: root.serial || root.mat
+            enabled: root.activeManager !== null
             text: qsTr("刷新")
             font.pixelSize: 12
             onClicked: root.refreshAndSync()
@@ -203,16 +218,25 @@ Rectangle {
             enabled: root.mat && !root.mat.connected
             font.pixelSize: 11
             model: [9600, 19200]
-            currentIndex: 0
+            currentIndex: root.mat && root.mat.baudRate === 19200 ? 1 : 0
             onActivated: { if (root.mat) root.mat.baudRate = parseInt(currentText) }
         }
 
-        // 链路指示灯（根据当前模式显示 HIL 或 MAT 状态）
+        Text {
+            visible: root.workMode === 2
+            text: "4800 / 8N1"
+            color: root.colorMuted
+            font.pixelSize: 11
+        }
+
+        // 链路指示灯显示当前模式的状态
         Rectangle {
             Layout.preferredWidth: 8
             Layout.preferredHeight: 8
             radius: 4
-            color: root.workMode === 0 ? root.hilLinkColor : root.matLinkColor
+            color: root.workMode === 0 ? root.hilLinkColor : root.workMode === 1 ? root.matLinkColor
+                   : !root.drive ? "#616161" : root.drive.connected ? "#66bb6a"
+                   : root.drive.connectionState === DriveSerialManager.Error ? "#ef5350" : "#616161"
 
             SequentialAnimation on opacity {
                 running: root.workMode === 0 && root.serial
@@ -226,32 +250,26 @@ Rectangle {
         // 连接/断开按钮（操作当前模式对应的串口）
         Button {
             Layout.preferredHeight: 26
-            enabled: root.workMode === 0 ? root.serial !== null : root.mat !== null
+            enabled: root.activeManager !== null
             font.pixelSize: 12
-            text: {
-                if (root.workMode === 0)
-                    return root.serial && root.serial.connected ? qsTr("断开") : qsTr("连接");
-                return root.mat && root.mat.connected ? qsTr("断开") : qsTr("连接");
-            }
+            text: root.channelBusy ? qsTr("断开") : qsTr("连接")
             onClicked: {
-                if (root.workMode === 0) {
-                    if (!root.serial) return;
-                    if (root.serial.connected)
-                        root.serial.disconnectPort();
-                    else {
-                        root.syncPortName(portCombo.currentText);
-                        root.serial.connectPort();
-                    }
-                } else {
-                    if (!root.mat) return;
-                    if (root.mat.connected)
-                        root.mat.disconnectPort();
-                    else {
-                        root.syncPortName(portCombo.currentText);
-                        root.mat.baudRate = parseInt(matBaudCombo.currentText);
-                        root.mat.connectPort();
+                var manager = root.activeManager;
+                if (!manager) return;
+                if (root.channelBusy) { manager.disconnectPort(); return; }
+                var name = portCombo.currentText;
+                if (!name) { root.connectionError(qsTr("请选择可用串口")); return; }
+                var managers = [root.serial, root.mat, root.drive];
+                for (var i = 0; i < managers.length; ++i) {
+                    var other = managers[i];
+                    if (other && other !== manager && root.isBusy(other)
+                            && other.portName.toUpperCase() === name.toUpperCase()) {
+                        root.connectionError(qsTr("串口 %1 已被其他通道占用，请先断开该通道").arg(name));
+                        return;
                     }
                 }
+                root.syncPortName(name);
+                manager.connectPort();
             }
         }
     }

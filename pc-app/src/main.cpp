@@ -4,6 +4,7 @@
 #include <QUrl>
 #include <QtQml/qqml.h>
 
+#include "communication/DriveSerialManager.h"
 #include "communication/MatSerialManager.h"
 #include "communication/SerialManager.h"
 #include "core/DataRecorder.h"
@@ -55,6 +56,9 @@ void registerCommunicationTypes()
         QStringLiteral("ProtocolCodec 由 SerialManager 创建，请通过 codec() 访问"));
     // MAT 协议串口管理器：直连洗衣机主控板，独立于 HIL 串口
     qmlRegisterType<whm::MatSerialManager>(kCommunicationUri, 1, 0, "MatSerialManager");
+    qmlRegisterType<whm::DriveSerialManager>(kCommunicationUri, 1, 0, "DriveSerialManager");
+    qmlRegisterUncreatableType<whm::DriveSimulator>(kCommunicationUri, 1, 0, "DriveSimulator",
+        QStringLiteral("DriveSimulator 由 DriveSerialManager 持有"));
 }
 
 void registerIntegrationTypes()

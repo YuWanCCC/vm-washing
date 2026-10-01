@@ -30,8 +30,9 @@ ApplicationWindow {
     }
     //! 底部面板是否展开
     property bool bottomExpanded: true
-    //! 底部面板目标高度
-    property real monitorHeight: bottomExpanded ? 260 : 40
+    //! MAT 监控优先分配显示空间，三种视图共用放大后的区域；其他页保持原高度
+    property real monitorHeight: !bottomExpanded ? 40
+                                 : bottomTab === 2 ? Math.round(root.height * 0.65) : 260
 
     width: 1280
     height: 800
@@ -61,6 +62,11 @@ ApplicationWindow {
     //! MAT 协议串口管理器（直连洗衣机主控板，独立于 HIL 串口）
     MatSerialManager {
         id: matSerial
+    }
+
+    //! MAT 曲线记录器（采样点按会话落盘 CSV，支持历史回放）
+    MatCurveRecorder {
+        id: curveRecorder
     }
 
     DriveSerialManager {
@@ -367,6 +373,7 @@ ApplicationWindow {
                         id: matDataMonitor
                         anchors.fill: parent
                         mat: matSerial
+                        recorder: curveRecorder
                         visible: root.bottomTab === 2
                     }
 

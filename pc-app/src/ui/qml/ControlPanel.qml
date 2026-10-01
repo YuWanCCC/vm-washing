@@ -48,6 +48,16 @@ Rectangle {
         return (mm < 10 ? "0" : "") + mm + ":" + (ss < 10 ? "0" : "") + ss;
     }
 
+    // 秒 → h:mm:ss（MAT 剩余时间，与 MAT 数据监控面板格式一致）
+    function formatTimeHMS(totalSeconds) {
+        var total = Math.max(0, Math.floor(totalSeconds));
+        var h = Math.floor(total / 3600);
+        var m = Math.floor((total % 3600) / 60);
+        var s = total % 60;
+        var pad = function(n) { return n < 10 ? "0" + n : "" + n; };
+        return (h > 0 ? h + ":" : "") + pad(m) + ":" + pad(s);
+    }
+
     /*!
         洗衣周期整体进度估算：按状态在流程中的次序给出粗略百分比，
         用于自动模式的进度条（引擎未暴露总时长，故不做精确插值）。
@@ -91,6 +101,8 @@ Rectangle {
     property int matErrorCode: 0
     property int matLoad: 0
     property int matHumidity: 0
+    property int matNtc1Int: 0       //!< NTC1 整数部分(°C)
+    property int matNtc1Dec: 0       //!< NTC1 小数部分(0.1°C)
     property int matCtrlB1: 0
     property int matCtrlB2: 0
 
@@ -114,6 +126,8 @@ Rectangle {
             root.matErrorCode = b(47)
             root.matLoad      = b(10)
             root.matHumidity  = (b(6) << 8) | b(5)
+            root.matNtc1Int   = b(15)
+            root.matNtc1Dec   = b(16)
         }
     }
 
@@ -131,7 +145,8 @@ Rectangle {
         property string title: ""
 
         Layout.fillWidth: true
-        implicitHeight: cardBody.implicitHeight + cardHeader.implicitHeight + 28
+        implicitHeight: cardBody.implicitHeight
+                        + (card.title.length > 0 ? cardHeader.implicitHeight + 28 : 20)
         color: "#333333"
         radius: 8
         border.width: 1
@@ -144,6 +159,8 @@ Rectangle {
             anchors.right: parent.right
             anchors.margins: 10
             text: card.title
+            visible: card.title.length > 0
+            height: visible ? implicitHeight : 0
             color: "#4fc3f7"
             font.pixelSize: 16
             font.bold: true
@@ -154,7 +171,7 @@ Rectangle {
             anchors.top: cardHeader.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.topMargin: 8
+            anchors.topMargin: card.title.length > 0 ? 8 : 0
             anchors.leftMargin: 10
             anchors.rightMargin: 10
             spacing: 8
@@ -213,6 +230,40 @@ Rectangle {
                     NumberAnimation { duration: 120 }
                 }
             }
+        }
+    }
+
+    //! MAT 关键数值行：色点+标签居左、数值居右（与 MAT 监控面板底部 ValueCell 同语义）
+    component MatKeyRow: RowLayout {
+        id: keyRow
+
+        property string label: ""
+        property string value: "-"
+        property color dotColor: "#4fc3f7"
+
+        Layout.fillWidth: true
+        spacing: 8
+
+        Rectangle {
+            Layout.preferredWidth: 8
+            Layout.preferredHeight: 8
+            radius: 4
+            color: keyRow.dotColor
+        }
+
+        Text {
+            text: keyRow.label
+            color: "#9e9e9e"
+            font.pixelSize: 12
+        }
+
+        Item { Layout.fillWidth: true }
+
+        Text {
+            text: keyRow.value
+            color: "#e0e0e0"
+            font.pixelSize: 14
+            font.bold: true
         }
     }
 
@@ -741,10 +792,11 @@ Rectangle {
             }
 
             GroupCard {
-                title: qsTr("实时状态")
+                title: root.workMode === 0 ? qsTr("实时状态") : ""
                 visible: root.workMode !== 2
 
                 MeterRow {
+                    visible: root.workMode === 0
                     label: qsTr("水位")
                     value: root.engine ? root.engine.waterModel.waterLevel : 0
                     unit: "mm"
@@ -753,6 +805,7 @@ Rectangle {
                 }
 
                 MeterRow {
+                    visible: root.workMode === 0
                     label: qsTr("水温")
                     value: root.engine ? root.engine.tempModel.temperature : 0
                     unit: "°C"
@@ -761,6 +814,7 @@ Rectangle {
                 }
 
                 MeterRow {
+                    visible: root.workMode === 0
                     label: qsTr("滚筒转速")
                     value: root.engine ? Math.abs(root.engine.motorModel.speedRpm) : 0
                     unit: "r/min"
@@ -770,12 +824,14 @@ Rectangle {
                 }
 
                 Rectangle {
+                    visible: root.workMode === 0
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1
                     color: root.colorBorder
                 }
 
                 RowLayout {
+                    visible: root.workMode === 0
                     Layout.fillWidth: true
                     spacing: 8
 
@@ -800,6 +856,49 @@ Rectangle {
                         font.pixelSize: 14
                         font.bold: true
                     }
+                }
+
+                // MAT 主控关键数值（原 MAT 数据监控面板底部卡片行，MAT 模式集中在此显示）
+                Rectangle {
+                    visible: root.workMode === 1
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: root.colorBorder
+                }
+
+                MatKeyRow {
+                    visible: root.workMode === 1
+                    label: qsTr("电机转速")
+                    dotColor: "#ffca28"
+                    value: root.matMotorSpeed + " r/min"
+                }
+
+                MatKeyRow {
+                    visible: root.workMode === 1
+                    label: qsTr("NTC1")
+                    dotColor: "#ef5350"
+                    value: root.matNtc1Int + "." + root.matNtc1Dec + " °C"
+                }
+
+                MatKeyRow {
+                    visible: root.workMode === 1
+                    label: qsTr("湿度")
+                    dotColor: "#42a5f5"
+                    value: root.matHumidity + ""
+                }
+
+                MatKeyRow {
+                    visible: root.workMode === 1
+                    label: qsTr("剩余时间")
+                    dotColor: "#4fc3f7"
+                    value: root.formatTimeHMS(root.matTimeToEnd)
+                }
+
+                MatKeyRow {
+                    visible: root.workMode === 1
+                    label: qsTr("故障")
+                    dotColor: root.matErrorCode === 0 ? "#66bb6a" : "#ef5350"
+                    value: root.matErrorCode === 0 ? qsTr("正常") : ("E" + root.matErrorCode)
                 }
 
                 // 传感器输出（下位机需要复现的物理量，HIL 模式可见）
